@@ -46,10 +46,12 @@ class FavoritesFragment : Fragment() {
         adapter = MediaFileAdapter(
             scope = viewLifecycleOwner.lifecycleScope,
             onClick = { startActivity(PlayerActivity.newIntent(requireContext(), it.uri, it.mediaType)) },
-            onMenu = { anchor, item -> showMenu(anchor, item) }
+            onMenu = { anchor, item -> showMenu(anchor, item) },
+            onSelectionChanged = { count -> updateSelectionBar(count) }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        setupSelectionBar()
 
         viewLifecycleOwner.lifecycleScope.launch {
             repo.observeFavorites().collectLatest { list ->
@@ -68,6 +70,36 @@ class FavoritesFragment : Fragment() {
                 binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
             }
         }
+    }
+
+    /**
+     * お気に入り画面では「まとめて選択」時の操作は「お気に入りから削除」のみ表示する
+     * (プレイリスト追加/非表示/削除の各ボタンは非表示にし、削除ボタンを流用する)。
+     */
+    private fun setupSelectionBar() {
+        binding.selectionBar.btnSelFavorite.visibility = View.GONE
+        binding.selectionBar.btnSelPlaylist.visibility = View.GONE
+        binding.selectionBar.btnSelHide.visibility = View.GONE
+        binding.selectionBar.btnSelDelete.setText(R.string.action_remove_from_favorites)
+        binding.selectionBar.btnSelectionClose.setOnClickListener {
+            adapter.exitSelectionMode()
+        }
+        binding.selectionBar.btnSelDelete.setOnClickListener {
+            val items = adapter.selectedItems()
+            lifecycleScope.launch {
+                items.forEach { repo.setFavorite(it.uri.toString(), false) }
+                adapter.exitSelectionMode()
+            }
+        }
+    }
+
+    private fun updateSelectionBar(count: Int) {
+        if (count <= 0) {
+            binding.selectionBar.root.visibility = View.GONE
+            return
+        }
+        binding.selectionBar.root.visibility = View.VISIBLE
+        binding.selectionBar.selectionCountText.text = getString(R.string.selection_count_format, count)
     }
 
     private fun showMenu(anchor: View, item: UiMediaItem) {
