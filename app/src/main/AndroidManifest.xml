@@ -57,6 +57,16 @@
             android:exported="false"
             android:theme="@style/Theme.HyperEqualizer" />
 
+        <activity
+            android:name=".ui.folder.FolderContentsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HyperEqualizer" />
+
+        <activity
+            android:name=".ui.hidden.HiddenItemsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HyperEqualizer" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
