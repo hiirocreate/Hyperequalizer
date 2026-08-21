@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 13以降の「テーマアイコン(壁紙の色に合わせて全アプリのアイコンを
+  単色化する)」機能用の、モノクロ(単色)レイヤー。
+  このレイヤーが無い状態でテーマアイコンをONにすると、前景レイヤー
+  (ic_launcher_foreground、あえて完全に透明にしてある)がそのまま単色化の
+  元絵として使われてしまい、結果としてアイコンが何も描かれていないように
+  見えてしまう。そのため、再生ボタンの三角形だけを単色シルエットとして
+  別途用意しておく(テーマアイコンON時はこの三角形が壁紙の色で塗られて
+  表示される。実際の背景画像の色・グラデーションは、テーマアイコン機能の
+  仕様上、ON中は表示されない)。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30 L36,78 L78,54 Z" />
+</vector>
