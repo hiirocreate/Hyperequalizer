@@ -123,7 +123,7 @@ class FolderContentsActivity : AppCompatActivity() {
                 R.id.action_add_to_playlist -> {
                     lifecycleScope.launch {
                         val playlists = playlistRepo.observePlaylists().first()
-                        PlaylistPickerDialog.show(this, lifecycleScope, playlistRepo, playlists, item) {}
+                        PlaylistPickerDialog.show(this@FolderContentsActivity, lifecycleScope, playlistRepo, playlists, item) {}
                     }
                     true
                 }
