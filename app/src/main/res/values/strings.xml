@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HyperEqualizer</string>
+    <string name="app_name">ハイパーイコライザー</string>
 
     <string name="tab_videos">動画</string>
     <string name="tab_music">音楽</string>
@@ -86,4 +86,7 @@
     <string name="hidden_files_header">非表示のファイル</string>
     <string name="hidden_folders_header">非表示のフォルダ</string>
     <string name="empty_hidden">非表示にした項目はありません</string>
+
+    <string name="selection_count_format">%1$d件選択中</string>
+    <string name="action_remove_from_playlist">プレイリストから削除</string>
 </resources>
