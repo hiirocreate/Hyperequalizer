@@ -108,7 +108,7 @@ class MediaLibraryScanner(private val context: Context) {
             @Suppress("DEPRECATION")
             MediaStore.MediaColumns.DATA
         }
-        return base + extra
+        return arrayOf(*base, extra)
     }
 
     /**
