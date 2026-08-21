@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HyperEqualizer</string>
+    <string name="app_name">ハイパーイコライザー</string>
 
     <string name="tab_videos">動画</string>
     <string name="tab_music">音楽</string>
@@ -42,6 +42,10 @@
     <string name="loop_clear">ループ区間を解除</string>
     <string name="loop_enable">区間ループ ON</string>
     <string name="loop_disable">区間ループ OFF</string>
+    <string name="loop_type_shuffle">シャッフル</string>
+    <string name="loop_type_list">リストループ</string>
+    <string name="loop_type_single">1ループ</string>
+    <string name="loop_type_ab">区間ループ</string>
 
     <string name="speed_label">再生速度 %1$.2fx</string>
 
