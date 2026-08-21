@@ -6,12 +6,16 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.widget.SeekBar
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -23,6 +27,8 @@ import jp.hyperequalizer.app.data.AspectMode
 import jp.hyperequalizer.app.data.MediaStateRepository
 import jp.hyperequalizer.app.data.MediaType
 import jp.hyperequalizer.app.databinding.ActivityPlayerBinding
+import jp.hyperequalizer.app.playback.FloatingPlayerService
+import jp.hyperequalizer.app.playback.PlaybackServiceConnector
 import jp.hyperequalizer.app.ui.editor.EditorActivity
 import jp.hyperequalizer.app.ui.equalizer.EqualizerSheet
 import jp.hyperequalizer.app.ui.equalizer.SeparatedPlaybackController
@@ -44,6 +50,8 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
     private lateinit var binding: ActivityPlayerBinding
     private lateinit var player: ExoPlayer
+    private var playerReady = false
+    private lateinit var serviceConnector: PlaybackServiceConnector
     private lateinit var repo: MediaStateRepository
     private lateinit var brightness: BrightnessController
     private lateinit var volume: VolumeController
@@ -67,12 +75,20 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
     private val loopCheckRunnable = object : Runnable {
         override fun run() {
-            if (loopEnabled && loopStartMs >= 0 && loopEndMs > loopStartMs && player.isPlaying) {
+            if (playerReady && loopEnabled && loopStartMs >= 0 && loopEndMs > loopStartMs && player.isPlaying) {
                 if (player.currentPosition >= loopEndMs) {
                     seekMain(loopStartMs)
                 }
             }
             handler.postDelayed(this, 200)
+        }
+    }
+
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Settings.canDrawOverlays(this)) {
+            startPopupMode()
         }
     }
 
@@ -88,17 +104,29 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
         parseIntentQueue()
 
-        player = ExoPlayer.Builder(this).build()
-        binding.videoLayout.playerView.player = player
-        player.addListener(playerListener)
-
         binding.gestureOverlay.listener = this
 
-        setupControls()
-        buildMediaQueueAndPrepare()
         handler.post(loopCheckRunnable)
         handler.post(progressRunnable)
         scheduleAutoHide()
+
+        // 実際の再生(ExoPlayer)は PlaybackService が保持する。バックグラウンド再生・
+        // 通知からの操作・ポップアップ表示のすべてで同一のインスタンスを共有するため。
+        serviceConnector = PlaybackServiceConnector(applicationContext)
+        serviceConnector.connect { exoPlayer -> onPlayerReady(exoPlayer) }
+    }
+
+    /** [PlaybackService] への接続が完了し、共有ExoPlayerインスタンスが使えるようになったタイミングで呼ばれる */
+    private fun onPlayerReady(exoPlayer: ExoPlayer) {
+        if (playerReady) return
+        player = exoPlayer
+        playerReady = true
+
+        binding.videoLayout.playerView.player = player
+        player.addListener(playerListener)
+
+        setupControls()
+        buildMediaQueueAndPrepare()
     }
 
     private fun parseIntentQueue() {
@@ -121,6 +149,20 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         var types = queueTypes
         var startIndex = intent.getIntExtra(EXTRA_START_INDEX, 0).coerceIn(0, uris.size - 1)
         val shuffle = intent.getBooleanExtra(EXTRA_SHUFFLE, false)
+
+        // ポップアップ表示や通知タップなどから、既に再生中と同じメディアの画面へ
+        // 戻ってきた場合は、キューを再構築せず今の再生状態(位置・再生中かどうか)を
+        // そのまま引き継ぐ。そうしないと画面を開き直すたびに最初から再生されてしまう。
+        val requestedFirstUri = uris.getOrNull(startIndex)
+        val alreadyPlayingSame = player.mediaItemCount > 0 &&
+            player.currentMediaItem?.localConfiguration?.uri?.toString() == requestedFirstUri
+        if (alreadyPlayingSame) {
+            queueUris = uris
+            queueTypes = types
+            applyForIndex(player.currentMediaItemIndex)
+            return
+        }
+
         if (shuffle && uris.size > 1) {
             val zipped = uris.zip(types).toMutableList()
             val head = zipped.removeAt(startIndex)
@@ -133,7 +175,18 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         queueUris = uris
         queueTypes = types
 
-        val items = uris.map { MediaItem.fromUri(it.toUri()) }
+        val items = uris.map { uri ->
+            MediaItem.Builder()
+                .setUri(uri.toUri())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(displayNameOf(uri))
+                        .setIsBrowsable(false)
+                        .setIsPlayable(true)
+                        .build()
+                )
+                .build()
+        }
         player.setMediaItems(items, startIndex, 0L)
         player.shuffleModeEnabled = shuffle
         player.prepare()
@@ -150,6 +203,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         binding.audioModeIcon.visibility = if (currentMediaType == MediaType.VIDEO) View.GONE else View.VISIBLE
         binding.titleText.text = displayNameOf(currentUri)
         binding.btnEdit.visibility = if (currentMediaType == MediaType.VIDEO) View.VISIBLE else View.GONE
+        binding.btnPopup.visibility = if (currentMediaType == MediaType.VIDEO) View.VISIBLE else View.GONE
         restoreStateForCurrent()
     }
 
@@ -292,6 +346,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             binding.gestureOverlay.isEnabled = !binding.gestureOverlay.isEnabled
             binding.btnLock.alpha = if (binding.gestureOverlay.isEnabled) 1f else 0.4f
         }
+        binding.btnPopup.setOnClickListener { onPopupClicked() }
 
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -323,6 +378,10 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
     private val progressRunnable = object : Runnable {
         override fun run() {
+            if (!playerReady) {
+                handler.postDelayed(this, 1000)
+                return
+            }
             if (player.duration > 0) {
                 val progress = (player.currentPosition * 1000 / player.duration).toInt()
                 if (!binding.seekBar.isPressed) {
@@ -492,9 +551,18 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     }
 
     private fun saveCurrentStateNow() {
-        if (currentUri.isEmpty()) return
+        if (!playerReady || currentUri.isEmpty()) return
         lifecycleScope.launch {
             repo.updatePosition(currentUri, player.currentPosition, player.duration.coerceAtLeast(0))
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // ポップアップ表示から戻ってきた場合など、映像の表示先が別のPlayerViewに
+        // 切り替わっていることがあるため、この画面のPlayerViewへ表示先を取り戻す
+        if (playerReady) {
+            binding.videoLayout.playerView.player = player
         }
     }
 
@@ -512,7 +580,43 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
         separatedController?.release()
-        player.release()
+        // ExoPlayer自体は PlaybackService が所有しているため、ここでは解放せず
+        // サービスとの接続を切るだけにする(バックグラウンド再生・ポップアップ表示を継続させるため)
+        if (playerReady) {
+            player.removeListener(playerListener)
+        }
+        serviceConnector.disconnect()
+    }
+
+    // ---- ポップアップ(フローティングウィンドウ)再生 ----
+
+    private fun onPopupClicked() {
+        if (!playerReady || currentMediaType != MediaType.VIDEO) return
+        if (Settings.canDrawOverlays(this)) {
+            startPopupMode()
+        } else {
+            showOverlayPermissionRationale()
+        }
+    }
+
+    private fun showOverlayPermissionRationale() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.popup_permission_title)
+            .setMessage(R.string.popup_permission_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                val settingsIntent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    "package:$packageName".toUri()
+                )
+                overlayPermissionLauncher.launch(settingsIntent)
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    private fun startPopupMode() {
+        FloatingPlayerService.start(this)
+        finish()
     }
 
     // ---- イコライザー画面(EqualizerSheet)から呼び出される分離再生API ----
