@@ -43,7 +43,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensurePermissions() {
-        val needed = MediaPermissions.required().filter {
+        val all = MediaPermissions.required() + MediaPermissions.notificationPermissionIfNeeded()
+        val needed = all.filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
         if (needed.isNotEmpty()) {
