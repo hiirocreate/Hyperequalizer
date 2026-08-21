@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="2dp">
+
+    <TextView
+        android:id="@+id/bandFreqLabel"
+        android:layout_width="52dp"
+        android:layout_height="wrap_content"
+        android:textColor="@color/hyper_muted"
+        android:textSize="11sp"
+        tools:text="1kHz"
+        xmlns:tools="http://schemas.android.com/tools" />
+
+    <SeekBar
+        android:id="@+id/bandSeekBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:progressTint="@color/hyper_primary"
+        android:thumbTint="@color/hyper_primary" />
+</LinearLayout>

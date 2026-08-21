@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black">
+
+    <jp.hyperequalizer.app.ui.player.ResizableVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 音楽再生時のアルバムアート代わりのアイコン表示 -->
+    <ImageView
+        android:id="@+id/audioModeIcon"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_music"
+        app:tint="@color/hyper_muted"
+        android:visibility="gone" />
+
+    <jp.hyperequalizer.app.ui.player.GestureOverlayView
+        android:id="@+id/gestureOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 中央フィードバック(明るさ/音量) -->
+    <LinearLayout
+        android:id="@+id/feedbackPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_feedback_pill"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/feedbackIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_brightness" />
+
+        <TextView
+            android:id="@+id/feedbackText"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/white"
+            tools:text="50%" />
+    </LinearLayout>
+
+    <!-- 中央シークプレビュー -->
+    <TextView
+        android:id="@+id/seekPreviewText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_feedback_pill"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:textColor="@color/white"
+        android:visibility="gone"
+        tools:text="01:23 / 05:00" />
+
+    <!-- ダブルタップ早送り/早戻しフラッシュ表示 -->
+    <TextView
+        android:id="@+id/skipFlashText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_feedback_pill"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:textColor="@color/white"
+        android:visibility="gone"
+        tools:text="»» 10秒" />
+
+    <!-- 上部バー -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@drawable/bg_scrim_top"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="8dp">
+
+        <ImageButton
+            android:id="@+id/btnBack"
+            style="@style/PlayerIconButton"
+            android:src="@drawable/ic_back" />
+
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:paddingStart="8dp"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            tools:text="動画タイトル.mp4" />
+
+        <ImageButton
+            android:id="@+id/btnFavorite"
+            style="@style/PlayerIconButton"
+            android:src="@drawable/ic_star_outline" />
+
+        <ImageButton
+            android:id="@+id/btnEqualizer"
+            style="@style/PlayerIconButton"
+            android:src="@drawable/ic_equalizer" />
+
+        <ImageButton
+            android:id="@+id/btnEdit"
+            style="@style/PlayerIconButton"
+            android:src="@drawable/ic_edit" />
+    </LinearLayout>
+
+    <!-- 下部コントロールバー -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_scrim_bottom"
+        android:orientation="vertical"
+        android:paddingBottom="8dp">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp">
+
+            <SeekBar
+                android:id="@+id/seekBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="1000"
+                android:progressTint="@color/hyper_accent"
+                android:thumbTint="@color/hyper_accent" />
+
+            <View
+                android:id="@+id/loopMarkerA"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical|start"
+                android:background="@color/hyper_accent"
+                android:visibility="gone" />
+
+            <View
+                android:id="@+id/loopMarkerB"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical|start"
+                android:background="@color/hyper_danger"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+
+            <TextView
+                android:id="@+id/currentTimeText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/hyper_muted"
+                android:textSize="12sp"
+                tools:text="00:00" />
+
+            <TextView
+                android:id="@+id/totalTimeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/hyper_muted"
+                android:textSize="12sp"
+                tools:text="05:00" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="4dp">
+
+            <ImageButton
+                android:id="@+id/btnShuffle"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_shuffle" />
+
+            <ImageButton
+                android:id="@+id/btnPrev"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_prev" />
+
+            <ImageButton
+                android:id="@+id/btnReplay10"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_replay_10" />
+
+            <ImageButton
+                android:id="@+id/btnPlayPause"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="4dp"
+                android:background="@drawable/bg_play_button"
+                android:src="@drawable/ic_play" />
+
+            <ImageButton
+                android:id="@+id/btnForward10"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_forward_10" />
+
+            <ImageButton
+                android:id="@+id/btnNext"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_next" />
+
+            <ImageButton
+                android:id="@+id/btnRepeat"
+                style="@style/PlayerIconButton"
+                android:src="@drawable/ic_repeat" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp">
+
+                <TextView
+                    android:id="@+id/btnAspect"
+                    style="@style/PlayerTextChip"
+                    android:text="@string/aspect_fit" />
+
+                <TextView
+                    android:id="@+id/btnSpeed"
+                    style="@style/PlayerTextChip"
+                    tools:text="1.00x" />
+
+                <TextView
+                    android:id="@+id/btnLoopSetA"
+                    style="@style/PlayerTextChip"
+                    android:text="A" />
+
+                <TextView
+                    android:id="@+id/btnLoopSetB"
+                    style="@style/PlayerTextChip"
+                    android:text="B" />
+
+                <TextView
+                    android:id="@+id/btnLoopToggle"
+                    style="@style/PlayerTextChip"
+                    android:text="@string/loop_enable" />
+            </LinearLayout>
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnLock"
+        style="@style/PlayerIconButton"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_end"
+        android:layout_marginEnd="8dp"
+        android:src="@drawable/ic_lock" />
+
+</FrameLayout>

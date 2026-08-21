@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ハイパーイコライザー</string>
+
+    <string name="tab_videos">動画</string>
+    <string name="tab_music">音楽</string>
+    <string name="tab_playlists">プレイリスト</string>
+    <string name="tab_favorites">お気に入り</string>
+
+    <string name="action_new_playlist">新規プレイリスト</string>
+    <string name="action_delete">削除</string>
+    <string name="action_rename">名称変更</string>
+    <string name="action_add_to_playlist">プレイリストに追加</string>
+    <string name="action_add_to_favorites">お気に入りに追加</string>
+    <string name="action_remove_from_favorites">お気に入りから削除</string>
+    <string name="action_shuffle">シャッフル再生</string>
+    <string name="action_extract_audio">音声を抽出して保存</string>
+    <string name="action_repeat">リピート</string>
+    <string name="action_edit">編集する</string>
+    <string name="action_equalizer">イコライザー</string>
+
+    <string name="dialog_playlist_name_hint">プレイリスト名</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">キャンセル</string>
+
+    <string name="permission_rationale_title">メディアへのアクセス許可</string>
+    <string name="permission_rationale_message">端末内の動画・音楽ファイルを表示するには、メディアへのアクセスを許可してください。</string>
+    <string name="permission_grant">許可する</string>
+
+    <string name="empty_videos">動画が見つかりません</string>
+    <string name="empty_music">音楽が見つかりません</string>
+    <string name="empty_playlists">プレイリストがありません。右下の＋から作成できます。</string>
+    <string name="empty_favorites">お気に入りに登録された項目はありません</string>
+
+    <string name="aspect_fit">元の比率</string>
+    <string name="aspect_fill">画面いっぱい</string>
+    <string name="aspect_crop">切り取り拡大</string>
+    <string name="aspect_original">元のサイズ(等倍)</string>
+
+    <string name="loop_set_start">ループ開始点を設定</string>
+    <string name="loop_set_end">ループ終了点を設定</string>
+    <string name="loop_clear">ループ区間を解除</string>
+    <string name="loop_enable">区間ループ ON</string>
+    <string name="loop_disable">区間ループ OFF</string>
+
+    <string name="speed_label">再生速度 %1$.2fx</string>
+
+    <string name="eq_title">イコライザー</string>
+    <string name="eq_enable">イコライザーを有効にする</string>
+    <string name="eq_preset">プリセット</string>
+    <string name="eq_vocal_volume">ボーカル音量</string>
+    <string name="eq_instrumental_volume">伴奏(楽器)音量</string>
+    <string name="eq_separate_now">この曲/動画をボーカル分離処理する</string>
+    <string name="eq_separating">分離処理中… %1$d%%</string>
+    <string name="eq_separation_done">分離処理が完了しました</string>
+    <string name="eq_separation_fallback">学習済みモデル未配置のため、簡易センターチャンネル抽出モードで動作しています</string>
+    <string name="eq_bass_boost">重低音強調</string>
+
+    <string name="editor_title">動画編集</string>
+    <string name="editor_trim">トリミング</string>
+    <string name="editor_split">分割</string>
+    <string name="editor_concat">動画を結合</string>
+    <string name="editor_copy">コピー</string>
+    <string name="editor_paste">貼り付け</string>
+    <string name="editor_mute_audio">音声を無効化</string>
+    <string name="editor_export">書き出して保存</string>
+    <string name="editor_exporting">書き出し中… %1$d%%</string>
+    <string name="editor_export_done">書き出しが完了しました</string>
+    <string name="editor_export_failed">書き出しに失敗しました: %1$s</string>
+    <string name="editor_add_clip">クリップを追加</string>
+    <string name="editor_remove_clip">クリップを削除</string>
+
+    <string name="notif_channel_playback">再生コントロール</string>
+</resources>

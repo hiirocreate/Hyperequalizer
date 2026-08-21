@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="12dp"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <FrameLayout
+        android:layout_width="64dp"
+        android:layout_height="64dp">
+
+        <ImageView
+            android:id="@+id/iconType"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_thumb_placeholder"
+            android:padding="16dp"
+            android:src="@drawable/ic_video"
+            app:tint="@color/hyper_muted"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+        <TextView
+            android:id="@+id/durationBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:background="@color/player_scrim"
+            android:paddingHorizontal="4dp"
+            android:textColor="@color/white"
+            android:textSize="10sp"
+            tools:text="12:34"
+            xmlns:tools="http://schemas.android.com/tools" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/hyper_on_surface"
+            android:textSize="15sp"
+            tools:text="動画ファイル名.mp4"
+            xmlns:tools="http://schemas.android.com/tools" />
+
+        <TextView
+            android:id="@+id/subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/hyper_muted"
+            android:textSize="12sp"
+            tools:text="120MB"
+            xmlns:tools="http://schemas.android.com/tools" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/favoriteIcon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginEnd="8dp"
+        android:src="@drawable/ic_star_filled"
+        android:visibility="gone"
+        app:tint="@color/hyper_accent"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+    <ImageButton
+        android:id="@+id/menuButton"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_more_vert"
+        app:tint="@color/hyper_muted"
+        xmlns:app="http://schemas.android.com/apk/res-auto" />
+</LinearLayout>

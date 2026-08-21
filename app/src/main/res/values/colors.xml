@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hyper_primary">#7C4DFF</color>
+    <color name="hyper_primary_dark">#4A2C9B</color>
+    <color name="hyper_accent">#00E5C3</color>
+    <color name="hyper_bg">#0E0E12</color>
+    <color name="hyper_surface">#1A1A22</color>
+    <color name="hyper_on_surface">#F2F2F7</color>
+    <color name="hyper_muted">#9A9AA5</color>
+    <color name="hyper_danger">#FF5C5C</color>
+    <color name="player_scrim">#99000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

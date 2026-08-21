@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.HyperEqualizer" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/hyper_primary</item>
+        <item name="colorPrimaryDark">@color/hyper_primary_dark</item>
+        <item name="colorAccent">@color/hyper_accent</item>
+        <item name="android:windowBackground">@color/hyper_bg</item>
+        <item name="colorSurface">@color/hyper_surface</item>
+        <item name="colorOnSurface">@color/hyper_on_surface</item>
+        <item name="android:statusBarColor">@color/hyper_bg</item>
+        <item name="android:navigationBarColor">@color/hyper_bg</item>
+    </style>
+
+    <style name="Theme.HyperEqualizer.Player" parent="Theme.HyperEqualizer">
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowBackground">@color/black</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+</resources>

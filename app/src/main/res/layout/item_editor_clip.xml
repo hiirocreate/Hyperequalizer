@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_thumb_placeholder"
+    android:layout_marginVertical="3dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="10dp">
+
+    <TextView
+        android:id="@+id/clipLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/hyper_on_surface"
+        android:textSize="13sp"
+        tools:text="1. clip.mp4  00:00-00:30" />
+
+    <View
+        android:id="@+id/selectedIndicator"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:background="@color/hyper_accent"
+        android:visibility="invisible" />
+</LinearLayout>
