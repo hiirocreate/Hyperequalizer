@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- シャッフル/リストループ/1ループ/区間ループが有効な時に使う、チップの「点灯」背景。
+     色でひと目で状態が分かるように、通常時(bg_chip、半透明の白)とはっきり区別できる
+     アクセントカラーの塗りつぶしにしてある。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/hyper_accent" />
+    <corners android:radius="18dp" />
+</shape>
