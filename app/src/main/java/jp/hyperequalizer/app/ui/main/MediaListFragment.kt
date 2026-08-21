@@ -88,7 +88,6 @@ class MediaListFragment : Fragment() {
             onMenu = { anchor, item -> showMenu(anchor, item) }
         )
         folderAdapter = MediaFolderAdapter(
-            scope = viewLifecycleOwner.lifecycleScope,
             onClick = { openFolder(it) },
             onMenu = { anchor, folder -> showFolderMenu(anchor, folder) }
         )
@@ -177,8 +176,7 @@ class MediaListFragment : Fragment() {
                         UiMediaFolder(
                             folderPath = path,
                             mediaType = mediaType,
-                            itemCount = files.size,
-                            thumbnailUri = files.firstOrNull()?.uri
+                            itemCount = files.size
                         )
                     }
                     .sortedBy { it.folderPath.lowercase() }
