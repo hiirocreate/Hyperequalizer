@@ -67,8 +67,8 @@ class VideoExporter(private val context: Context) {
                     .build()
             }
 
-            val sequence = EditedMediaItemSequence.Builder(editedItems).build()
-            val composition = Composition.Builder(sequence).build()
+            val sequence = EditedMediaItemSequence(editedItems)
+            val composition = Composition.Builder(listOf(sequence)).build()
 
             val t = Transformer.Builder(context)
                 .addListener(object : Transformer.Listener {
