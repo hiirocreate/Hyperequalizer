@@ -75,4 +75,15 @@
     <string name="popup_permission_title">ポップアップ表示の許可が必要です</string>
     <string name="popup_permission_message">動画をポップアップ(他のアプリの上に重ねて表示)で再生するには、「他のアプリの上に重ねて表示」の権限が必要です。次の画面で許可をONにしてください。</string>
     <string name="action_popup">ポップアップ表示</string>
+
+    <string name="view_mode_list">一覧</string>
+    <string name="view_mode_folder">フォルダ別</string>
+    <string name="folder_item_count">%1$d件</string>
+    <string name="action_hide_folder">このフォルダを非表示にする</string>
+    <string name="action_toggle_hidden">非表示にする</string>
+    <string name="action_unhide">再表示する</string>
+    <string name="action_manage_hidden">非表示の管理</string>
+    <string name="hidden_files_header">非表示のファイル</string>
+    <string name="hidden_folders_header">非表示のフォルダ</string>
+    <string name="empty_hidden">非表示にした項目はありません</string>
 </resources>
