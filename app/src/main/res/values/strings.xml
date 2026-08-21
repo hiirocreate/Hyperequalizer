@@ -46,6 +46,7 @@
     <string name="loop_type_list">リストループ</string>
     <string name="loop_type_single">1ループ</string>
     <string name="loop_type_ab">区間ループ</string>
+    <string name="loop_type_ab_short">AB</string>
 
     <string name="speed_label">再生速度 %1$.2fx</string>
 

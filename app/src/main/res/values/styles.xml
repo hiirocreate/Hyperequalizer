@@ -20,4 +20,26 @@
         <item name="android:textColor">@color/hyper_on_surface</item>
         <item name="android:textSize">13sp</item>
     </style>
+
+    <!-- シャッフル/リストループ/1ループ用の、省スペースな正方形アイコンボタン -->
+    <style name="PlayerLoopIconButton">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_margin">2dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <!-- A/B/AB(区間ループ)用の、省スペースな正方形の文字チップ -->
+    <style name="PlayerLoopLetterChip">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_margin">2dp</item>
+        <item name="android:background">@drawable/bg_chip</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/hyper_on_surface</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>
