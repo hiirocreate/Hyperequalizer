@@ -71,4 +71,8 @@
     <string name="editor_remove_clip">クリップを削除</string>
 
     <string name="notif_channel_playback">再生コントロール</string>
+
+    <string name="popup_permission_title">ポップアップ表示の許可が必要です</string>
+    <string name="popup_permission_message">動画をポップアップ(他のアプリの上に重ねて表示)で再生するには、「他のアプリの上に重ねて表示」の権限が必要です。次の画面で許可をONにしてください。</string>
+    <string name="action_popup">ポップアップ表示</string>
 </resources>
