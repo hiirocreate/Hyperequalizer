@@ -46,6 +46,10 @@
                 android:clipToPadding="false"
                 android:paddingBottom="24dp" />
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        <include
+            android:id="@+id/selectionBar"
+            layout="@layout/selection_action_bar" />
     </LinearLayout>
 
     <TextView

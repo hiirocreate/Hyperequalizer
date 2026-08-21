@@ -54,4 +54,8 @@
         android:text="@string/empty_favorites"
         android:textColor="@color/hyper_muted"
         android:visibility="gone" />
+
+    <include
+        android:id="@+id/selectionBar"
+        layout="@layout/selection_action_bar" />
 </LinearLayout>

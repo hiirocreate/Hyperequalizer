@@ -32,4 +32,8 @@
         android:textColor="@color/hyper_muted"
         android:visibility="gone"
         tools:visibility="visible" />
+
+    <include
+        android:id="@+id/selectionBar"
+        layout="@layout/selection_action_bar" />
 </LinearLayout>
