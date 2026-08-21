@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 
@@ -28,5 +29,29 @@ object MediaDeleter {
             }
             false
         }
+    }
+
+    /**
+     * まとめて選択した複数ファイルを一括削除する。
+     * API30以降は [MediaStore.createDeleteRequest] を使い、
+     * システムの確認ダイアログを1回だけ表示してまとめて削除できるようにする。
+     * それより前のバージョンでは1件ずつ [delete] を試みる(削除ごとに確認が必要になる場合がある)。
+     */
+    fun deleteAll(
+        activity: Activity,
+        uris: List<Uri>,
+        deleteRequestLauncher: ActivityResultLauncher<IntentSenderRequest>
+    ) {
+        if (uris.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val pendingIntent = MediaStore.createDeleteRequest(activity.contentResolver, uris)
+                deleteRequestLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                return
+            } catch (e: Exception) {
+                // フォールバックとして1件ずつ削除を試みる
+            }
+        }
+        uris.forEach { uri -> delete(activity, uri, deleteRequestLauncher) }
     }
 }
