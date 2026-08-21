@@ -1,27 +1,34 @@
 package jp.hyperequalizer.app.ui.main
 
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import jp.hyperequalizer.app.HyperEqApp
 import jp.hyperequalizer.app.R
+import jp.hyperequalizer.app.data.HiddenFolderRepository
 import jp.hyperequalizer.app.data.MediaStateRepository
 import jp.hyperequalizer.app.data.MediaType
 import jp.hyperequalizer.app.data.PlaylistRepository
 import jp.hyperequalizer.app.databinding.FragmentMediaListBinding
+import jp.hyperequalizer.app.library.MediaFile
 import jp.hyperequalizer.app.library.MediaLibraryScanner
 import jp.hyperequalizer.app.ui.common.AudioExtractDialogHelper
 import jp.hyperequalizer.app.ui.common.MediaFileAdapter
+import jp.hyperequalizer.app.ui.common.MediaFolderAdapter
 import jp.hyperequalizer.app.ui.common.PlaylistPickerDialog
+import jp.hyperequalizer.app.ui.common.UiMediaFolder
 import jp.hyperequalizer.app.ui.common.UiMediaItem
 import jp.hyperequalizer.app.ui.editor.EditorActivity
+import jp.hyperequalizer.app.ui.folder.FolderContentsActivity
 import jp.hyperequalizer.app.ui.player.PlayerActivity
 import jp.hyperequalizer.app.util.MediaDeleter
 import jp.hyperequalizer.app.util.MediaPermissions
@@ -30,8 +37,13 @@ import kotlinx.coroutines.launch
 
 /**
  * 「動画」「音楽」タブ共通のファイル一覧Fragment。
+ * 通常の「一覧」表示と、保存フォルダごとにまとめる「フォルダ別」表示を
+ * 切り替えられる。どちらの表示でも、このアプリ上で非表示にした
+ * ファイル・フォルダは除外される(実ファイルには一切手を加えない)。
  */
 class MediaListFragment : Fragment() {
+
+    private enum class ViewMode { LIST, FOLDER }
 
     private var _binding: FragmentMediaListBinding? = null
     private val binding get() = _binding!!
@@ -40,7 +52,14 @@ class MediaListFragment : Fragment() {
     private lateinit var scanner: MediaLibraryScanner
     private lateinit var mediaStateRepo: MediaStateRepository
     private lateinit var playlistRepo: PlaylistRepository
+    private lateinit var hiddenFolderRepo: HiddenFolderRepository
     private lateinit var adapter: MediaFileAdapter
+    private lateinit var folderAdapter: MediaFolderAdapter
+
+    private var viewMode = ViewMode.LIST
+    private var allFiles: List<MediaFile> = emptyList()
+    private var hiddenUris: Set<String> = emptySet()
+    private var hiddenFolders: Set<String> = emptySet()
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -53,6 +72,7 @@ class MediaListFragment : Fragment() {
         scanner = MediaLibraryScanner(requireContext())
         mediaStateRepo = MediaStateRepository(app.database.mediaStateDao())
         playlistRepo = PlaylistRepository(app.database.playlistDao())
+        hiddenFolderRepo = HiddenFolderRepository(app.database.hiddenFolderDao())
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -62,17 +82,56 @@ class MediaListFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        adapter = MediaFileAdapter(onClick = { openPlayer(it) }, onMenu = { anchor, item -> showMenu(anchor, item) })
+        adapter = MediaFileAdapter(
+            scope = viewLifecycleOwner.lifecycleScope,
+            onClick = { openPlayer(it) },
+            onMenu = { anchor, item -> showMenu(anchor, item) }
+        )
+        folderAdapter = MediaFolderAdapter(
+            scope = viewLifecycleOwner.lifecycleScope,
+            onClick = { openFolder(it) },
+            onMenu = { anchor, folder -> showFolderMenu(anchor, folder) }
+        )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
         binding.emptyText.text = getString(if (mediaType == MediaType.VIDEO) R.string.empty_videos else R.string.empty_music)
         binding.swipeRefresh.setOnRefreshListener { reload() }
+
+        binding.viewModeBar.visibility = View.VISIBLE
+        binding.btnViewList.setOnClickListener { setViewMode(ViewMode.LIST) }
+        binding.btnViewFolder.setOnClickListener { setViewMode(ViewMode.FOLDER) }
+        setViewMode(ViewMode.LIST)
+
         reload()
     }
 
     override fun onResume() {
         super.onResume()
         reload()
+    }
+
+    private fun setViewMode(mode: ViewMode) {
+        viewMode = mode
+        binding.recyclerView.adapter = if (mode == ViewMode.LIST) adapter else folderAdapter
+        styleViewModeChips()
+        renderCurrent()
+    }
+
+    private fun styleViewModeChips() {
+        val context = requireContext()
+        val selectedBg = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.hyper_primary))
+        val selectedText = ContextCompat.getColor(context, R.color.white)
+        val unselectedText = ContextCompat.getColor(context, R.color.hyper_muted)
+        if (viewMode == ViewMode.LIST) {
+            binding.btnViewList.backgroundTintList = selectedBg
+            binding.btnViewList.setTextColor(selectedText)
+            binding.btnViewFolder.backgroundTintList = null
+            binding.btnViewFolder.setTextColor(unselectedText)
+        } else {
+            binding.btnViewFolder.backgroundTintList = selectedBg
+            binding.btnViewFolder.setTextColor(selectedText)
+            binding.btnViewList.backgroundTintList = null
+            binding.btnViewList.setTextColor(unselectedText)
+        }
     }
 
     private fun reload() {
@@ -83,26 +142,71 @@ class MediaListFragment : Fragment() {
         }
         binding.swipeRefresh.isRefreshing = true
         lifecycleScope.launch {
-            val files = if (mediaType == MediaType.VIDEO) scanner.scanVideos() else scanner.scanAudios()
-            val favoriteUris = mediaStateRepo.observeFavorites().first().map { it.uri }.toSet()
-            val items = files.map {
-                UiMediaItem(
-                    uri = it.uri,
-                    displayName = it.displayName,
-                    subtitle = formatSize(it.sizeBytes),
-                    durationMs = it.durationMs,
-                    mediaType = it.mediaType,
-                    isFavorite = favoriteUris.contains(it.uri.toString())
-                )
-            }
-            adapter.submitList(items)
-            binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            allFiles = if (mediaType == MediaType.VIDEO) scanner.scanVideos() else scanner.scanAudios()
+            hiddenUris = mediaStateRepo.getHiddenUris()
+            hiddenFolders = hiddenFolderRepo.getHiddenFolderPaths(mediaType)
+            renderCurrent()
             binding.swipeRefresh.isRefreshing = false
+        }
+    }
+
+    private fun visibleFiles(): List<MediaFile> =
+        allFiles.filter { it.uri.toString() !in hiddenUris && it.folderPath !in hiddenFolders }
+
+    private fun renderCurrent() {
+        if (!::adapter.isInitialized) return
+        lifecycleScope.launch {
+            val favoriteUris = mediaStateRepo.observeFavorites().first().map { it.uri }.toSet()
+            val visible = visibleFiles()
+            if (viewMode == ViewMode.LIST) {
+                val items = visible.map {
+                    UiMediaItem(
+                        uri = it.uri,
+                        displayName = it.displayName,
+                        subtitle = formatSize(it.sizeBytes),
+                        durationMs = it.durationMs,
+                        mediaType = it.mediaType,
+                        isFavorite = favoriteUris.contains(it.uri.toString())
+                    )
+                }
+                adapter.submitList(items)
+                binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            } else {
+                val folders = visible.groupBy { it.folderPath }
+                    .map { (path, files) ->
+                        UiMediaFolder(
+                            folderPath = path,
+                            mediaType = mediaType,
+                            itemCount = files.size,
+                            thumbnailUri = files.firstOrNull()?.uri
+                        )
+                    }
+                    .sortedBy { it.folderPath.lowercase() }
+                folderAdapter.submitList(folders)
+                binding.emptyText.visibility = if (folders.isEmpty()) View.VISIBLE else View.GONE
+            }
         }
     }
 
     private fun openPlayer(item: UiMediaItem) {
         startActivity(PlayerActivity.newIntent(requireContext(), item.uri, item.mediaType))
+    }
+
+    private fun openFolder(folder: UiMediaFolder) {
+        startActivity(FolderContentsActivity.newIntent(requireContext(), folder.mediaType, folder.folderPath))
+    }
+
+    private fun showFolderMenu(anchor: View, folder: UiMediaFolder) {
+        val popup = PopupMenu(requireContext(), anchor)
+        popup.menu.add(0, 1, 0, R.string.action_hide_folder)
+        popup.setOnMenuItemClickListener {
+            lifecycleScope.launch {
+                hiddenFolderRepo.hide(folder.folderPath, folder.mediaType)
+                reload()
+            }
+            true
+        }
+        popup.show()
     }
 
     private fun showMenu(anchor: View, item: UiMediaItem) {
@@ -138,6 +242,16 @@ class MediaListFragment : Fragment() {
                 }
                 R.id.action_extract_audio -> {
                     AudioExtractDialogHelper.start(requireContext(), lifecycleScope, item.uri, item.displayName)
+                    true
+                }
+                R.id.action_toggle_hidden -> {
+                    lifecycleScope.launch {
+                        mediaStateRepo.setHidden(
+                            item.uri.toString(), true,
+                            displayName = item.displayName, mediaType = item.mediaType, durationMs = item.durationMs
+                        )
+                        reload()
+                    }
                     true
                 }
                 R.id.action_delete -> {

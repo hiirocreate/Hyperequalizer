@@ -3,11 +3,14 @@ package jp.hyperequalizer.app.ui.main
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.material.tabs.TabLayoutMediator
 import jp.hyperequalizer.app.R
 import jp.hyperequalizer.app.databinding.ActivityMainBinding
+import jp.hyperequalizer.app.ui.hidden.HiddenItemsActivity
 import jp.hyperequalizer.app.util.MediaPermissions
 
 class MainActivity : AppCompatActivity() {
@@ -40,6 +43,21 @@ class MainActivity : AppCompatActivity() {
         }.attach()
 
         ensurePermissions()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_manage_hidden -> {
+                startActivity(HiddenItemsActivity.newIntent(this))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     private fun ensurePermissions() {

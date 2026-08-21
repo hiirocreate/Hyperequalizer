@@ -44,6 +44,7 @@ class FavoritesFragment : Fragment() {
         binding.swipeRefresh.isEnabled = false
         binding.emptyText.text = getString(R.string.empty_favorites)
         adapter = MediaFileAdapter(
+            scope = viewLifecycleOwner.lifecycleScope,
             onClick = { startActivity(PlayerActivity.newIntent(requireContext(), it.uri, it.mediaType)) },
             onMenu = { anchor, item -> showMenu(anchor, item) }
         )
@@ -52,7 +53,8 @@ class FavoritesFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             repo.observeFavorites().collectLatest { list ->
-                val items = list.map {
+                // このアプリ上で非表示にした項目は、お気に入り一覧からも除外する
+                val items = list.filter { !it.isHidden }.map {
                     UiMediaItem(
                         uri = Uri.parse(it.uri),
                         displayName = it.displayName.ifBlank { it.uri },
