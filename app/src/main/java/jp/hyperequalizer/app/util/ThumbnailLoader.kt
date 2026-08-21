@@ -21,6 +21,8 @@ import kotlinx.coroutines.withContext
  */
 object ThumbnailLoader {
 
+    private const val CACHE_SIZE_BYTES = 24 * 1024 * 1024 // 24MB
+
     private val cache = object : LruCache<String, Bitmap>(CACHE_SIZE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
@@ -71,6 +73,4 @@ object ThumbnailLoader {
             bmp
         }
     }
-
-    private const val CACHE_SIZE_BYTES = 24 * 1024 * 1024 // 24MB
 }
