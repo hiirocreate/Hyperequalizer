@@ -202,11 +202,6 @@
             android:paddingTop="4dp">
 
             <ImageButton
-                android:id="@+id/btnShuffle"
-                style="@style/PlayerIconButton"
-                android:src="@drawable/ic_shuffle" />
-
-            <ImageButton
                 android:id="@+id/btnPrev"
                 style="@style/PlayerIconButton"
                 android:src="@drawable/ic_prev" />
@@ -233,13 +228,16 @@
                 android:id="@+id/btnNext"
                 style="@style/PlayerIconButton"
                 android:src="@drawable/ic_next" />
-
-            <ImageButton
-                android:id="@+id/btnRepeat"
-                style="@style/PlayerIconButton"
-                android:src="@drawable/ic_repeat" />
         </LinearLayout>
 
+        <!--
+          再生モード(シャッフル/リストループ/1ループ/区間ループ)のチップ列。
+          以前はシャッフルと繰り返しをそれぞれ1個ずつの小さいアイコンボタンに
+          押し込めていて分かりにくかったため、文字ラベル付きのチップに変更し、
+          さらに先頭(スクロールしなくても見える位置)に配置した。
+          有効なものだけ背景色がアクセントカラーに変わるので、一目で今どの
+          モードが効いているか分かるようになっている。
+        -->
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -253,14 +251,25 @@
                 android:paddingHorizontal="8dp">
 
                 <TextView
-                    android:id="@+id/btnAspect"
+                    android:id="@+id/btnShuffle"
                     style="@style/PlayerTextChip"
-                    android:text="@string/aspect_fit" />
+                    android:text="@string/loop_type_shuffle" />
 
                 <TextView
-                    android:id="@+id/btnSpeed"
+                    android:id="@+id/btnRepeatList"
                     style="@style/PlayerTextChip"
-                    tools:text="1.00x" />
+                    android:text="@string/loop_type_list" />
+
+                <TextView
+                    android:id="@+id/btnRepeatOne"
+                    style="@style/PlayerTextChip"
+                    android:text="@string/loop_type_single" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_margin="4dp"
+                    android:background="@color/hyper_muted" />
 
                 <TextView
                     android:id="@+id/btnLoopSetA"
@@ -275,7 +284,23 @@
                 <TextView
                     android:id="@+id/btnLoopToggle"
                     style="@style/PlayerTextChip"
-                    android:text="@string/loop_enable" />
+                    android:text="@string/loop_type_ab" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_margin="4dp"
+                    android:background="@color/hyper_muted" />
+
+                <TextView
+                    android:id="@+id/btnAspect"
+                    style="@style/PlayerTextChip"
+                    android:text="@string/aspect_fit" />
+
+                <TextView
+                    android:id="@+id/btnSpeed"
+                    style="@style/PlayerTextChip"
+                    tools:text="1.00x" />
             </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>
