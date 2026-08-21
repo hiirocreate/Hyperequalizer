@@ -47,10 +47,12 @@ class PlaylistDetailActivity : AppCompatActivity() {
                 val index = currentUris.indexOf(item.uri.toString()).coerceAtLeast(0)
                 startActivity(PlayerActivity.newIntentForQueue(this, currentUris, currentTypes, index, shuffle = false))
             },
-            onMenu = { anchor, item -> showMenu(anchor, item) }
+            onMenu = { anchor, item -> showMenu(anchor, item) },
+            onSelectionChanged = { count -> updateSelectionBar(count) }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
+        setupSelectionBar()
 
         binding.btnPlayAll.setOnClickListener {
             if (currentUris.isNotEmpty()) {
@@ -88,6 +90,35 @@ class PlaylistDetailActivity : AppCompatActivity() {
                 binding.emptyText.visibility = if (ui.isEmpty()) View.VISIBLE else View.GONE
             }
         }
+    }
+
+    /**
+     * プレイリスト詳細画面では「まとめて選択」時の操作は「プレイリストから削除」のみ表示する。
+     */
+    private fun setupSelectionBar() {
+        binding.selectionBar.btnSelFavorite.visibility = View.GONE
+        binding.selectionBar.btnSelPlaylist.visibility = View.GONE
+        binding.selectionBar.btnSelHide.visibility = View.GONE
+        binding.selectionBar.btnSelDelete.setText(R.string.action_remove_from_playlist)
+        binding.selectionBar.btnSelectionClose.setOnClickListener {
+            adapter.exitSelectionMode()
+        }
+        binding.selectionBar.btnSelDelete.setOnClickListener {
+            val items = adapter.selectedItems()
+            lifecycleScope.launch {
+                items.forEach { repo.removeItemByUri(playlistId, it.uri.toString()) }
+                adapter.exitSelectionMode()
+            }
+        }
+    }
+
+    private fun updateSelectionBar(count: Int) {
+        if (count <= 0) {
+            binding.selectionBar.root.visibility = View.GONE
+            return
+        }
+        binding.selectionBar.root.visibility = View.VISIBLE
+        binding.selectionBar.selectionCountText.text = getString(R.string.selection_count_format, count)
     }
 
     private fun showMenu(anchor: View, item: UiMediaItem) {
