@@ -42,6 +42,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
         repo = PlaylistRepository(app.database.playlistDao())
 
         adapter = MediaFileAdapter(
+            scope = lifecycleScope,
             onClick = { item ->
                 val index = currentUris.indexOf(item.uri.toString()).coerceAtLeast(0)
                 startActivity(PlayerActivity.newIntentForQueue(this, currentUris, currentTypes, index, shuffle = false))
