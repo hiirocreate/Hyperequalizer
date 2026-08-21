@@ -116,6 +116,8 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         player.addListener(playerListener)
 
         setupControls()
+        updateShuffleUi()
+        updateRepeatUi()
         buildMediaQueueAndPrepare()
     }
 
@@ -132,7 +134,16 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
     private fun buildMediaQueueAndPrepare() {
         if (queueUris.isEmpty()) {
-            finish()
+            // キュー情報が渡されていない = 通知をタップして「今再生中の画面にそのまま
+            // 戻る」呼び出し(PlaybackServiceの通知タップ用Intentを参照)。
+            // すでにPlaybackService側のExoPlayerがキューを持っていればそれを
+            // そのまま引き継いで表示し、何も再生されていなければ開く意味がないので閉じる。
+            if (player.mediaItemCount > 0) {
+                rebuildQueueFromPlayer()
+                applyForIndex(player.currentMediaItemIndex)
+            } else {
+                finish()
+            }
             return
         }
         var uris = queueUris
@@ -147,8 +158,11 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         val alreadyPlayingSame = player.mediaItemCount > 0 &&
             player.currentMediaItem?.localConfiguration?.uri?.toString() == requestedFirstUri
         if (alreadyPlayingSame) {
-            queueUris = uris
-            queueTypes = types
+            // ここで渡されたuris/typesは単発Intent(EXTRA_URIのみ)の場合1件しかないことがあり、
+            // それをそのまま採用すると実際のキュー(複数曲/複数動画)が1件に縮んでしまう。
+            // 実際に再生中のキューは常にPlaybackService側のExoPlayerが正なので、そちらから
+            // 組み直す。
+            rebuildQueueFromPlayer()
             applyForIndex(player.currentMediaItemIndex)
             return
         }
@@ -165,24 +179,48 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         queueUris = uris
         queueTypes = types
 
-        val items = uris.map { uri ->
-            MediaItem.Builder()
-                .setUri(uri.toUri())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(displayNameOf(uri))
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .build()
-                )
-                .build()
-        }
+        val items = uris.mapIndexed { index, uri -> buildMediaItem(uri, types.getOrElse(index) { MediaType.VIDEO.name }) }
         player.setMediaItems(items, startIndex, 0L)
         player.shuffleModeEnabled = shuffle
         player.prepare()
         player.playWhenReady = true
 
         applyForIndex(startIndex)
+    }
+
+    private fun buildMediaItem(uri: String, mediaType: String): MediaItem {
+        val extras = Bundle().apply { putString(EXTRA_MEDIA_ITEM_TYPE, mediaType) }
+        return MediaItem.Builder()
+            .setUri(uri.toUri())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(displayNameOf(uri))
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setExtras(extras)
+                    .build()
+            )
+            .build()
+    }
+
+    /**
+     * 通知タップなどでこの画面を開き直した際、Intentにキュー情報が無い(または渡された
+     * URIが1件だけ)場合に、実際に再生中のキューを PlaybackService 側の ExoPlayer から
+     * 直接読み直す。各アイテムの種別(動画/音楽)は [buildMediaItem] でメタデータの
+     * extrasに埋め込んであるものをここで取り出す。
+     */
+    private fun rebuildQueueFromPlayer() {
+        val uris = mutableListOf<String>()
+        val types = mutableListOf<String>()
+        for (i in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(i)
+            val uri = item.localConfiguration?.uri?.toString() ?: continue
+            val type = item.mediaMetadata.extras?.getString(EXTRA_MEDIA_ITEM_TYPE) ?: MediaType.VIDEO.name
+            uris.add(uri)
+            types.add(type)
+        }
+        queueUris = uris
+        queueTypes = types
     }
 
     private fun applyForIndex(index: Int) {
@@ -259,6 +297,17 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
                 updateLoopMarkerUi()
             }
         }
+
+        // 通知側のシャッフル/リピート切り替えボタン(PlaybackServiceのカスタムコマンド)で
+        // 状態が変わった場合も、同じExoPlayerインスタンスを共有しているためこれらが呼ばれる。
+        // これによりこの画面のチップ表示も常に実際の状態と一致する。
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            updateShuffleUi()
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            updateRepeatUi()
+        }
     }
 
     private fun setupControls() {
@@ -272,11 +321,21 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             player.shuffleModeEnabled = !player.shuffleModeEnabled
             updateShuffleUi()
         }
-        binding.btnRepeat.setOnClickListener {
-            player.repeatMode = when (player.repeatMode) {
-                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                else -> Player.REPEAT_MODE_OFF
+        binding.btnRepeatList.setOnClickListener {
+            // リストループ(REPEAT_MODE_ALL)のON/OFF切り替え。1ループとは排他。
+            player.repeatMode = if (player.repeatMode == Player.REPEAT_MODE_ALL) {
+                Player.REPEAT_MODE_OFF
+            } else {
+                Player.REPEAT_MODE_ALL
+            }
+            updateRepeatUi()
+        }
+        binding.btnRepeatOne.setOnClickListener {
+            // 1ループ(REPEAT_MODE_ONE、当該ファイルのみ繰り返し)のON/OFF切り替え。
+            player.repeatMode = if (player.repeatMode == Player.REPEAT_MODE_ONE) {
+                Player.REPEAT_MODE_OFF
+            } else {
+                Player.REPEAT_MODE_ONE
             }
             updateRepeatUi()
         }
@@ -492,12 +551,19 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         binding.btnFavorite.setImageResource(if (isFavorite) R.drawable.ic_star_filled else R.drawable.ic_star_outline)
     }
 
+    /** チップの背景色/文字色を切り替えて、有効なモードが一目で分かるようにする */
+    private fun setChipActive(chip: android.widget.TextView, active: Boolean) {
+        chip.setBackgroundResource(if (active) R.drawable.bg_chip_active else R.drawable.bg_chip)
+        chip.setTextColor(getColor(if (active) R.color.hyper_bg else R.color.hyper_on_surface))
+    }
+
     private fun updateShuffleUi() {
-        binding.btnShuffle.alpha = if (player.shuffleModeEnabled) 1f else 0.5f
+        setChipActive(binding.btnShuffle, player.shuffleModeEnabled)
     }
 
     private fun updateRepeatUi() {
-        binding.btnRepeat.alpha = if (player.repeatMode == Player.REPEAT_MODE_OFF) 0.5f else 1f
+        setChipActive(binding.btnRepeatList, player.repeatMode == Player.REPEAT_MODE_ALL)
+        setChipActive(binding.btnRepeatOne, player.repeatMode == Player.REPEAT_MODE_ONE)
     }
 
     private fun updateLoopMarkerUi() {
@@ -515,8 +581,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         } else {
             binding.loopMarkerB.visibility = View.GONE
         }
-        binding.btnLoopToggle.text = getString(if (loopEnabled) R.string.loop_disable else R.string.loop_enable)
-        binding.btnLoopToggle.alpha = if (loopEnabled) 1f else 0.6f
+        setChipActive(binding.btnLoopToggle, loopEnabled)
     }
 
     private var loopSaveJob: Job? = null
@@ -647,6 +712,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         private const val EXTRA_START_INDEX = "extra_start_index"
         private const val EXTRA_SHUFFLE = "extra_shuffle"
 
+        /** MediaItemのメタデータ(extras)に種別(動画/音楽)を埋め込むためのキー */
+        private const val EXTRA_MEDIA_ITEM_TYPE = "media_item_type"
+
         fun newIntent(context: Context, uri: Uri, mediaType: MediaType): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_URI, uri.toString())
@@ -664,5 +732,16 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
                 .putStringArrayListExtra(EXTRA_QUEUE_TYPES, ArrayList(types))
                 .putExtra(EXTRA_START_INDEX, startIndex)
                 .putExtra(EXTRA_SHUFFLE, shuffle)
+
+        /**
+         * 通知(PlaybackServiceの再生中通知)をタップした時に使う、キュー情報を
+         * 一切含まないIntent。あえて何も渡さないことで、この画面側は
+         * 「今PlaybackServiceが再生しているキューへそのまま戻る」と解釈する
+         * ([buildMediaQueueAndPrepare]参照)。サービス(非Activity)コンテキストから
+         * 起動するため FLAG_ACTIVITY_NEW_TASK が必須。
+         */
+        fun newIntentReopenCurrent(context: Context): Intent =
+            Intent(context, PlayerActivity::class.java)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }
