@@ -23,6 +23,15 @@ interface MediaStateDao {
     @Query("UPDATE media_state SET isFavorite = :favorite, updatedAt = :now WHERE uri = :uri")
     suspend fun setFavorite(uri: String, favorite: Boolean, now: Long = System.currentTimeMillis())
 
+    @Query("SELECT * FROM media_state WHERE isHidden = 1 ORDER BY updatedAt DESC")
+    fun observeHidden(): Flow<List<MediaStateEntity>>
+
+    @Query("SELECT uri FROM media_state WHERE isHidden = 1")
+    suspend fun getHiddenUris(): List<String>
+
+    @Query("UPDATE media_state SET isHidden = :hidden, updatedAt = :now WHERE uri = :uri")
+    suspend fun setHiddenFlag(uri: String, hidden: Boolean, now: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM media_state WHERE uri = :uri")
     suspend fun delete(uri: String)
 

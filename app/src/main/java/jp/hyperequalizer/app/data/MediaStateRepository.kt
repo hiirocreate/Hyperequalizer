@@ -98,4 +98,36 @@ class MediaStateRepository(private val dao: MediaStateDao) {
     }
 
     suspend fun delete(uri: String) = dao.delete(uri)
+
+    fun observeHidden(): Flow<List<MediaStateEntity>> = dao.observeHidden()
+
+    /** このアプリ上での非表示状態にある全ファイルのURI集合を取得する(一覧の絞り込み用) */
+    suspend fun getHiddenUris(): Set<String> = dao.getHiddenUris().toSet()
+
+    /**
+     * 非表示フラグを更新する。対象のレコードがまだ存在しない場合は
+     * displayName/mediaType/durationMsを添えて新規作成する(setFavoriteと同様の理由)。
+     */
+    suspend fun setHidden(
+        uri: String,
+        hidden: Boolean,
+        displayName: String = "",
+        mediaType: MediaType = MediaType.VIDEO,
+        durationMs: Long = 0L
+    ) {
+        val current = dao.getByUri(uri)
+        if (current == null) {
+            dao.upsert(
+                MediaStateEntity(
+                    uri = uri,
+                    displayName = displayName,
+                    mediaType = mediaType.name,
+                    durationMs = durationMs,
+                    isHidden = hidden
+                )
+            )
+        } else {
+            dao.upsert(current.copy(isHidden = hidden, updatedAt = System.currentTimeMillis()))
+        }
+    }
 }

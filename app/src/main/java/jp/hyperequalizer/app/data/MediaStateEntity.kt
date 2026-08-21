@@ -1,5 +1,6 @@
 package jp.hyperequalizer.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -35,6 +36,15 @@ data class MediaStateEntity(
 
     // お気に入り
     val isFavorite: Boolean = false,
+
+    // このアプリ内だけでの非表示(実ファイルには一切手を加えない)。
+    // MIGRATION_1_2でのALTER TABLE(既存行にNOT NULL列を追加するにはSQLite上
+    // DEFAULT指定が必須)と、Roomがコンパイル時に期待するスキーマとを一致させる
+    // ため、defaultValueを明示している(省略するとRoomの起動時スキーマ検証で
+    // 「実際のテーブルにはデフォルト値があるが期待するスキーマには無い」という
+    // 不一致になり、マイグレーション後にクラッシュする)。
+    @ColumnInfo(defaultValue = "0")
+    val isHidden: Boolean = false,
 
     // ボーカル / 伴奏 個別音量 (0.0〜2.0、1.0が基準)
     val vocalVolume: Float = 1.0f,
