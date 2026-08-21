@@ -73,17 +73,6 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     private var speedIndex = 2
     private var separatedController: SeparatedPlaybackController? = null
 
-    private val loopCheckRunnable = object : Runnable {
-        override fun run() {
-            if (playerReady && loopEnabled && loopStartMs >= 0 && loopEndMs > loopStartMs && player.isPlaying) {
-                if (player.currentPosition >= loopEndMs) {
-                    seekMain(loopStartMs)
-                }
-            }
-            handler.postDelayed(this, 200)
-        }
-    }
-
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -106,12 +95,13 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
         binding.gestureOverlay.listener = this
 
-        handler.post(loopCheckRunnable)
         handler.post(progressRunnable)
         scheduleAutoHide()
 
         // 実際の再生(ExoPlayer)は PlaybackService が保持する。バックグラウンド再生・
         // 通知からの操作・ポップアップ表示のすべてで同一のインスタンスを共有するため。
+        // 区間(A-B)ループの監視・シークもPlaybackService側で行っており、この画面が
+        // 閉じてバックグラウンド再生に切り替わってもループが効き続けるようになっている。
         serviceConnector = PlaybackServiceConnector(applicationContext)
         serviceConnector.connect { exoPlayer -> onPlayerReady(exoPlayer) }
     }
