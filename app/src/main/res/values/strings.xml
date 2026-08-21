@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ハイパーイコライザー</string>
+    <string name="app_name">HyperEqualizer</string>
 
     <string name="tab_videos">動画</string>
     <string name="tab_music">音楽</string>
