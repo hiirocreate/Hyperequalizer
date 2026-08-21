@@ -4,5 +4,6 @@
     <item android:id="@+id/action_add_to_playlist" android:title="@string/action_add_to_playlist" />
     <item android:id="@+id/action_edit" android:title="@string/action_edit" />
     <item android:id="@+id/action_extract_audio" android:title="@string/action_extract_audio" />
+    <item android:id="@+id/action_toggle_hidden" android:title="@string/action_toggle_hidden" />
     <item android:id="@+id/action_delete" android:title="@string/action_delete" />
 </menu>
