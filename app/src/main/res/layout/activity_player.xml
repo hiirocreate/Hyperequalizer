@@ -231,13 +231,85 @@
         </LinearLayout>
 
         <!--
-          再生モード(シャッフル/リストループ/1ループ/区間ループ)のチップ列。
-          以前はシャッフルと繰り返しをそれぞれ1個ずつの小さいアイコンボタンに
-          押し込めていて分かりにくかったため、文字ラベル付きのチップに変更し、
-          さらに先頭(スクロールしなくても見える位置)に配置した。
-          有効なものだけ背景色がアクセントカラーに変わるので、一目で今どの
-          モードが効いているか分かるようになっている。
+          再生モード(シャッフル/リストループ/1ループ/区間ループ)の行。
+          以前は文字ラベル付きのチップでスクロールが必要だったが、省スペースの
+          ため全てアイコン化し、スクロール無しで1行に収めた。有効なものだけ
+          アイコンの色がアクセントカラーに変わる(A/B/区間ループは背景ごと点灯する)ので、
+          一目で今どのモードが効いているか分かるようになっている。
         -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="2dp">
+
+            <ImageButton
+                android:id="@+id/btnShuffle"
+                style="@style/PlayerLoopIconButton"
+                android:contentDescription="@string/loop_type_shuffle"
+                android:src="@drawable/ic_shuffle" />
+
+            <ImageButton
+                android:id="@+id/btnRepeatList"
+                style="@style/PlayerLoopIconButton"
+                android:contentDescription="@string/loop_type_list"
+                android:src="@drawable/ic_repeat" />
+
+            <FrameLayout
+                android:id="@+id/btnRepeatOne"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_margin="2dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/loop_type_single">
+
+                <ImageView
+                    android:id="@+id/btnRepeatOneIcon"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_repeat" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|end"
+                    android:layout_marginEnd="1dp"
+                    android:layout_marginBottom="1dp"
+                    android:background="@drawable/bg_badge"
+                    android:includeFontPadding="false"
+                    android:paddingHorizontal="3dp"
+                    android:text="1"
+                    android:textColor="@color/hyper_bg"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="20dp"
+                android:layout_margin="6dp"
+                android:background="@color/hyper_muted" />
+
+            <TextView
+                android:id="@+id/btnLoopSetA"
+                style="@style/PlayerLoopLetterChip"
+                android:text="A" />
+
+            <TextView
+                android:id="@+id/btnLoopSetB"
+                style="@style/PlayerLoopLetterChip"
+                android:text="B" />
+
+            <TextView
+                android:id="@+id/btnLoopToggle"
+                style="@style/PlayerLoopLetterChip"
+                android:layout_width="40dp"
+                android:text="@string/loop_type_ab_short" />
+        </LinearLayout>
+
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -249,48 +321,6 @@
                 android:gravity="center"
                 android:orientation="horizontal"
                 android:paddingHorizontal="8dp">
-
-                <TextView
-                    android:id="@+id/btnShuffle"
-                    style="@style/PlayerTextChip"
-                    android:text="@string/loop_type_shuffle" />
-
-                <TextView
-                    android:id="@+id/btnRepeatList"
-                    style="@style/PlayerTextChip"
-                    android:text="@string/loop_type_list" />
-
-                <TextView
-                    android:id="@+id/btnRepeatOne"
-                    style="@style/PlayerTextChip"
-                    android:text="@string/loop_type_single" />
-
-                <View
-                    android:layout_width="1dp"
-                    android:layout_height="24dp"
-                    android:layout_margin="4dp"
-                    android:background="@color/hyper_muted" />
-
-                <TextView
-                    android:id="@+id/btnLoopSetA"
-                    style="@style/PlayerTextChip"
-                    android:text="A" />
-
-                <TextView
-                    android:id="@+id/btnLoopSetB"
-                    style="@style/PlayerTextChip"
-                    android:text="B" />
-
-                <TextView
-                    android:id="@+id/btnLoopToggle"
-                    style="@style/PlayerTextChip"
-                    android:text="@string/loop_type_ab" />
-
-                <View
-                    android:layout_width="1dp"
-                    android:layout_height="24dp"
-                    android:layout_margin="4dp"
-                    android:background="@color/hyper_muted" />
 
                 <TextView
                     android:id="@+id/btnAspect"
