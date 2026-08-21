@@ -39,6 +39,7 @@ class FolderContentsActivity : AppCompatActivity() {
     private lateinit var adapter: MediaFileAdapter
     private lateinit var mediaType: MediaType
     private lateinit var folderPath: String
+    private var currentItems: List<UiMediaItem> = emptyList()
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -62,7 +63,14 @@ class FolderContentsActivity : AppCompatActivity() {
 
         adapter = MediaFileAdapter(
             scope = lifecycleScope,
-            onClick = { startActivity(PlayerActivity.newIntent(this, it.uri, it.mediaType)) },
+            onClick = { item ->
+                // このフォルダ内の他のファイルも含めてキューを組み、リスト再生時に
+                // 「次へ」「前へ」やリストループ・シャッフルが効くようにする
+                val uris = currentItems.map { it.uri.toString() }
+                val types = currentItems.map { it.mediaType.name }
+                val startIndex = uris.indexOf(item.uri.toString()).coerceAtLeast(0)
+                startActivity(PlayerActivity.newIntentForQueue(this, uris, types, startIndex, shuffle = false))
+            },
             onMenu = { anchor, item -> showMenu(anchor, item) },
             onSelectionChanged = { count -> updateSelectionBar(count) }
         )
@@ -158,6 +166,7 @@ class FolderContentsActivity : AppCompatActivity() {
                         isFavorite = favoriteUris.contains(it.uri.toString())
                     )
                 }
+            currentItems = items
             adapter.submitList(items)
             binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         }
