@@ -63,13 +63,76 @@ class FolderContentsActivity : AppCompatActivity() {
         adapter = MediaFileAdapter(
             scope = lifecycleScope,
             onClick = { startActivity(PlayerActivity.newIntent(this, it.uri, it.mediaType)) },
-            onMenu = { anchor, item -> showMenu(anchor, item) }
+            onMenu = { anchor, item -> showMenu(anchor, item) },
+            onSelectionChanged = { count -> updateSelectionBar(count) }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
         binding.emptyText.text = getString(if (mediaType == MediaType.VIDEO) R.string.empty_videos else R.string.empty_music)
+        setupSelectionBar()
 
         reload()
+    }
+
+    /** まとめて選択した項目に対する一括操作(お気に入り/プレイリスト追加/非表示/削除)のバーを設定する */
+    private fun setupSelectionBar() {
+        binding.selectionBar.btnSelectionClose.setOnClickListener {
+            adapter.exitSelectionMode()
+        }
+        binding.selectionBar.btnSelFavorite.setOnClickListener {
+            val items = adapter.selectedItems()
+            lifecycleScope.launch {
+                items.forEach {
+                    mediaStateRepo.setFavorite(
+                        it.uri.toString(), true,
+                        displayName = it.displayName, mediaType = it.mediaType, durationMs = it.durationMs
+                    )
+                }
+                adapter.exitSelectionMode()
+                reload()
+            }
+        }
+        binding.selectionBar.btnSelPlaylist.setOnClickListener {
+            val items = adapter.selectedItems()
+            lifecycleScope.launch {
+                val playlists = playlistRepo.observePlaylists().first()
+                PlaylistPickerDialog.showBulk(this@FolderContentsActivity, lifecycleScope, playlistRepo, playlists, items) {
+                    adapter.exitSelectionMode()
+                    reload()
+                }
+            }
+        }
+        binding.selectionBar.btnSelHide.setOnClickListener {
+            val items = adapter.selectedItems()
+            lifecycleScope.launch {
+                items.forEach {
+                    mediaStateRepo.setHidden(
+                        it.uri.toString(), true,
+                        displayName = it.displayName, mediaType = it.mediaType, durationMs = it.durationMs
+                    )
+                }
+                adapter.exitSelectionMode()
+                reload()
+            }
+        }
+        binding.selectionBar.btnSelDelete.setOnClickListener {
+            val items = adapter.selectedItems()
+            MediaDeleter.deleteAll(this, items.map { it.uri }, deleteRequestLauncher)
+            lifecycleScope.launch {
+                items.forEach { mediaStateRepo.delete(it.uri.toString()) }
+                adapter.exitSelectionMode()
+                reload()
+            }
+        }
+    }
+
+    private fun updateSelectionBar(count: Int) {
+        if (count <= 0) {
+            binding.selectionBar.root.visibility = View.GONE
+            return
+        }
+        binding.selectionBar.root.visibility = View.VISIBLE
+        binding.selectionBar.selectionCountText.text = getString(R.string.selection_count_format, count)
     }
 
     override fun onResume() {
