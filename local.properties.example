@@ -1,0 +1,3 @@
+# GitHub ActionsではSDKは自動セットアップされるため、このファイルは不要です。
+# ローカルのAndroid Studioで開く場合はこのファイルを local.properties にコピーし、
+# sdk.dir=（あなたのAndroid SDKパス）を記載してください。
