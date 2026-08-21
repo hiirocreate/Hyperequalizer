@@ -2,17 +2,21 @@ package jp.hyperequalizer.app.ui.player
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.View
+import android.widget.ImageView
 import android.widget.SeekBar
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -192,6 +196,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         val extras = Bundle().apply { putString(EXTRA_MEDIA_ITEM_TYPE, mediaType) }
         return MediaItem.Builder()
             .setUri(uri.toUri())
+            // mediaIdを明示的に指定する(未指定だと全アイテムが空文字列の同一IDになり、
+            // MediaSessionの内部処理で複数曲/複数動画のキューを正しく区別できなくなるため)
+            .setMediaId(uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(displayNameOf(uri))
@@ -393,8 +400,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         }
         binding.btnLock.setOnClickListener {
             binding.gestureOverlay.isEnabled = !binding.gestureOverlay.isEnabled
-            binding.btnLock.alpha = if (binding.gestureOverlay.isEnabled) 1f else 0.4f
+            updateLockUi()
         }
+        updateLockUi()
         binding.btnPopup.setOnClickListener { onPopupClicked() }
 
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -551,19 +559,32 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         binding.btnFavorite.setImageResource(if (isFavorite) R.drawable.ic_star_filled else R.drawable.ic_star_outline)
     }
 
-    /** チップの背景色/文字色を切り替えて、有効なモードが一目で分かるようにする */
-    private fun setChipActive(chip: android.widget.TextView, active: Boolean) {
+    /** 文字チップ(A/B/AB)の背景色/文字色を切り替えて、有効なモードが一目で分かるようにする */
+    private fun setChipActive(chip: TextView, active: Boolean) {
         chip.setBackgroundResource(if (active) R.drawable.bg_chip_active else R.drawable.bg_chip)
         chip.setTextColor(getColor(if (active) R.color.hyper_bg else R.color.hyper_on_surface))
     }
 
+    /** アイコンボタン(シャッフル/リストループ/1ループ/ロック)の色を切り替えて状態を示す */
+    private fun setIconActive(icon: ImageView, active: Boolean) {
+        val color = getColor(if (active) R.color.hyper_accent else R.color.hyper_muted)
+        ImageViewCompat.setImageTintList(icon, ColorStateList.valueOf(color))
+        icon.alpha = if (active) 1f else 0.7f
+    }
+
     private fun updateShuffleUi() {
-        setChipActive(binding.btnShuffle, player.shuffleModeEnabled)
+        setIconActive(binding.btnShuffle, player.shuffleModeEnabled)
     }
 
     private fun updateRepeatUi() {
-        setChipActive(binding.btnRepeatList, player.repeatMode == Player.REPEAT_MODE_ALL)
-        setChipActive(binding.btnRepeatOne, player.repeatMode == Player.REPEAT_MODE_ONE)
+        setIconActive(binding.btnRepeatList, player.repeatMode == Player.REPEAT_MODE_ALL)
+        setIconActive(binding.btnRepeatOneIcon, player.repeatMode == Player.REPEAT_MODE_ONE)
+    }
+
+    /** ロックOFF(通常操作可能)は半透明、ON(ロック中)は点灯(アクセントカラー+不透明)にする */
+    private fun updateLockUi() {
+        val locked = !binding.gestureOverlay.isEnabled
+        setIconActive(binding.btnLock, locked)
     }
 
     private fun updateLoopMarkerUi() {
@@ -581,6 +602,8 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         } else {
             binding.loopMarkerB.visibility = View.GONE
         }
+        setChipActive(binding.btnLoopSetA, loopStartMs >= 0)
+        setChipActive(binding.btnLoopSetB, loopEndMs >= 0)
         setChipActive(binding.btnLoopToggle, loopEnabled)
     }
 

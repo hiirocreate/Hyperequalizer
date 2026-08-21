@@ -32,10 +32,11 @@ class ResizableVideoLayout @JvmOverloads constructor(
             requestApply()
         }
 
-    /** ユーザーのピンチ操作による追加ズーム倍率 (1.0〜MAX_USER_ZOOM) */
+    /** ユーザーのピンチ操作による追加ズーム倍率 (MIN_USER_ZOOM〜MAX_USER_ZOOM)。
+     *  1.0未満も許可しており、元の動画サイズより小さく縮小表示できる。 */
     var userZoom: Float = 1.0f
         set(value) {
-            field = value.coerceIn(1.0f, MAX_USER_ZOOM)
+            field = value.coerceIn(MIN_USER_ZOOM, MAX_USER_ZOOM)
             requestApply()
         }
 
@@ -116,5 +117,7 @@ class ResizableVideoLayout @JvmOverloads constructor(
 
     companion object {
         const val MAX_USER_ZOOM = 6.0f
+        /** 元の動画サイズよりもさらに縮小できるようにするための下限倍率 */
+        const val MIN_USER_ZOOM = 0.3f
     }
 }
