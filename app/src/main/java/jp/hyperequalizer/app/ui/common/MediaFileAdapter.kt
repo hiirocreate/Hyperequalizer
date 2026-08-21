@@ -18,11 +18,57 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+/**
+ * ファイル一覧用アダプター。
+ * 長押しで「まとめて選択」モードに入り、タップでチェックのON/OFFを切り替えられる。
+ * 選択状態が変わるたびに [onSelectionChanged] へ現在の選択件数を通知する
+ * (呼び出し側はこれを使って選択操作バーの表示/非表示や件数表示を更新する)。
+ */
 class MediaFileAdapter(
     private val scope: CoroutineScope,
     private val onClick: (UiMediaItem) -> Unit,
-    private val onMenu: (View, UiMediaItem) -> Unit
+    private val onMenu: (View, UiMediaItem) -> Unit,
+    private val onSelectionChanged: (Int) -> Unit = {}
 ) : ListAdapter<UiMediaItem, MediaFileAdapter.VH>(DIFF) {
+
+    private var selectionMode = false
+    private val selectedKeys = mutableSetOf<String>()
+
+    private fun keyOf(item: UiMediaItem): String = "${item.uri}|${item.playlistItemId}"
+
+    fun isSelectionMode(): Boolean = selectionMode
+
+    fun selectedCount(): Int = selectedKeys.size
+
+    fun selectedItems(): List<UiMediaItem> = currentList.filter { selectedKeys.contains(keyOf(it)) }
+
+    fun enterSelectionMode(initialItem: UiMediaItem) {
+        selectionMode = true
+        selectedKeys.clear()
+        selectedKeys.add(keyOf(initialItem))
+        notifyDataSetChanged()
+        onSelectionChanged(selectedKeys.size)
+    }
+
+    fun exitSelectionMode() {
+        if (!selectionMode) return
+        selectionMode = false
+        selectedKeys.clear()
+        notifyDataSetChanged()
+        onSelectionChanged(0)
+    }
+
+    fun toggleSelection(item: UiMediaItem) {
+        val key = keyOf(item)
+        if (selectedKeys.contains(key)) selectedKeys.remove(key) else selectedKeys.add(key)
+        if (selectedKeys.isEmpty()) {
+            exitSelectionMode()
+            return
+        }
+        val index = currentList.indexOfFirst { keyOf(it) == key }
+        if (index >= 0) notifyItemChanged(index)
+        onSelectionChanged(selectedKeys.size)
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val binding = ItemMediaFileBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -48,7 +94,21 @@ class MediaFileAdapter(
             binding.durationBadge.text = TimeFormatter.format(item.durationMs)
             resetToPlaceholder(item.mediaType)
             binding.favoriteIcon.visibility = if (item.isFavorite) View.VISIBLE else View.GONE
-            binding.root.setOnClickListener { onClick(item) }
+
+            val selected = selectedKeys.contains(keyOf(item))
+            binding.selectionCheckbox.visibility = if (selectionMode) View.VISIBLE else View.GONE
+            binding.selectionCheckbox.isChecked = selected
+            binding.menuButton.visibility = if (selectionMode) View.GONE else View.VISIBLE
+
+            binding.root.setOnClickListener {
+                if (selectionMode) toggleSelection(item) else onClick(item)
+            }
+            binding.root.setOnLongClickListener {
+                if (!selectionMode) {
+                    enterSelectionMode(item)
+                }
+                true
+            }
             binding.menuButton.setOnClickListener { onMenu(it, item) }
 
             val context = binding.root.context

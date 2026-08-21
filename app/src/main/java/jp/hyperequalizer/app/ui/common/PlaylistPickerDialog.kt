@@ -78,4 +78,69 @@ object PlaylistPickerDialog {
     fun showCreateOnly(context: Context, scope: CoroutineScope, repository: PlaylistRepository, onAdded: () -> Unit) {
         showCreateDialog(context, scope, repository, null, onAdded)
     }
+
+    /**
+     * まとめて選択した複数項目を、選んだプレイリストへ一括追加する。
+     */
+    fun showBulk(
+        context: Context,
+        scope: CoroutineScope,
+        repository: PlaylistRepository,
+        playlists: List<PlaylistEntity>,
+        items: List<UiMediaItem>,
+        onAdded: () -> Unit
+    ) {
+        if (items.isEmpty()) return
+        val labels = playlists.map { it.name }.toMutableList()
+        labels.add(context.getString(R.string.action_new_playlist))
+
+        AlertDialog.Builder(context)
+            .setTitle(R.string.action_add_to_playlist)
+            .setItems(labels.toTypedArray()) { dialog, which ->
+                dialog.dismiss()
+                if (which == playlists.size) {
+                    showCreateDialogBulk(context, scope, repository, items, onAdded)
+                } else {
+                    val target = playlists[which]
+                    scope.launch {
+                        items.forEach { item ->
+                            repository.addItem(target.id, item.uri.toString(), item.displayName, item.mediaType)
+                        }
+                        onAdded()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    private fun showCreateDialogBulk(
+        context: Context,
+        scope: CoroutineScope,
+        repository: PlaylistRepository,
+        items: List<UiMediaItem>,
+        onAdded: () -> Unit
+    ) {
+        val view = android.view.LayoutInflater.from(context).inflate(R.layout.dialog_text_input, null)
+        val input = view.findViewById<TextInputEditText>(R.id.input)
+        AlertDialog.Builder(context)
+            .setTitle(R.string.action_new_playlist)
+            .setView(view)
+            .setPositiveButton(R.string.dialog_ok) { dialog, _ ->
+                val name = input.text?.toString()?.trim().orEmpty()
+                if (name.isNotEmpty()) {
+                    scope.launch {
+                        val type = items.firstOrNull()?.mediaType ?: MediaType.MIXED
+                        val id = repository.createPlaylist(name, type)
+                        items.forEach { item ->
+                            repository.addItem(id, item.uri.toString(), item.displayName, item.mediaType)
+                        }
+                        onAdded()
+                    }
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
 }
