@@ -27,6 +27,7 @@ class FavoritesFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var repo: MediaStateRepository
     private lateinit var adapter: MediaFileAdapter
+    private var currentItems: List<UiMediaItem> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +46,14 @@ class FavoritesFragment : Fragment() {
         binding.emptyText.text = getString(R.string.empty_favorites)
         adapter = MediaFileAdapter(
             scope = viewLifecycleOwner.lifecycleScope,
-            onClick = { startActivity(PlayerActivity.newIntent(requireContext(), it.uri, it.mediaType)) },
+            onClick = { item ->
+                // お気に入り一覧内の他のファイルも含めてキューを組み、リスト再生時に
+                // 「次へ」「前へ」やリストループ・シャッフルが効くようにする
+                val uris = currentItems.map { it.uri.toString() }
+                val types = currentItems.map { it.mediaType.name }
+                val startIndex = uris.indexOf(item.uri.toString()).coerceAtLeast(0)
+                startActivity(PlayerActivity.newIntentForQueue(requireContext(), uris, types, startIndex, shuffle = false))
+            },
             onMenu = { anchor, item -> showMenu(anchor, item) },
             onSelectionChanged = { count -> updateSelectionBar(count) }
         )
@@ -66,6 +74,7 @@ class FavoritesFragment : Fragment() {
                         isFavorite = true
                     )
                 }
+                currentItems = items
                 adapter.submitList(items)
                 binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
             }

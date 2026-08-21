@@ -253,7 +253,13 @@ class MediaListFragment : Fragment() {
     }
 
     private fun openPlayer(item: UiMediaItem) {
-        startActivity(PlayerActivity.newIntent(requireContext(), item.uri, item.mediaType))
+        // 一覧(LIST表示)内の他のファイルも含めてキューを組み、リスト再生時に
+        // 「次へ」「前へ」やリストループ・シャッフルが効くようにする
+        val files = visibleFiles()
+        val uris = files.map { it.uri.toString() }
+        val types = files.map { it.mediaType.name }
+        val startIndex = uris.indexOf(item.uri.toString()).coerceAtLeast(0)
+        startActivity(PlayerActivity.newIntentForQueue(requireContext(), uris, types, startIndex, shuffle = false))
     }
 
     private fun openFolder(folder: UiMediaFolder) {
