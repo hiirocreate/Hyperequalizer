@@ -10,5 +10,7 @@ data class MediaFile(
     val sizeBytes: Long,
     val mediaType: MediaType,
     val mimeType: String?,
-    val dateAdded: Long
+    val dateAdded: Long,
+    /** 「フォルダ別」表示・フォルダ単位の非表示機能で使う、保存先フォルダの相対パス */
+    val folderPath: String
 )

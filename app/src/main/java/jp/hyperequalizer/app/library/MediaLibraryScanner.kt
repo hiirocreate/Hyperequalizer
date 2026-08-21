@@ -1,10 +1,13 @@
 package jp.hyperequalizer.app.library
 
 import android.content.Context
+import android.database.Cursor
+import android.os.Build
 import android.provider.MediaStore
 import jp.hyperequalizer.app.data.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 端末内(MediaStore)から動画・音楽ファイルを列挙する。
@@ -17,7 +20,7 @@ class MediaLibraryScanner(private val context: Context) {
     suspend fun scanVideos(): List<MediaFile> = withContext(Dispatchers.IO) {
         val list = mutableListOf<MediaFile>()
         val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        val projection = arrayOf(
+        val projection = buildProjection(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.DURATION,
@@ -46,7 +49,8 @@ class MediaLibraryScanner(private val context: Context) {
                         sizeBytes = cursor.getLong(sizeCol),
                         mediaType = MediaType.VIDEO,
                         mimeType = cursor.getString(mimeCol),
-                        dateAdded = cursor.getLong(dateCol)
+                        dateAdded = cursor.getLong(dateCol),
+                        folderPath = folderPathOf(cursor)
                     )
                 )
             }
@@ -57,7 +61,7 @@ class MediaLibraryScanner(private val context: Context) {
     suspend fun scanAudios(): List<MediaFile> = withContext(Dispatchers.IO) {
         val list = mutableListOf<MediaFile>()
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        val projection = arrayOf(
+        val projection = buildProjection(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.DURATION,
@@ -87,11 +91,45 @@ class MediaLibraryScanner(private val context: Context) {
                         sizeBytes = cursor.getLong(sizeCol),
                         mediaType = MediaType.AUDIO,
                         mimeType = cursor.getString(mimeCol),
-                        dateAdded = cursor.getLong(dateCol)
+                        dateAdded = cursor.getLong(dateCol),
+                        folderPath = folderPathOf(cursor)
                     )
                 )
             }
         }
         list
+    }
+
+    /** APIレベルに応じて、フォルダ判定に必要な列(RELATIVE_PATHまたはDATA)を追加したprojectionを作る */
+    private fun buildProjection(vararg base: String): Array<String> {
+        val extra = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.MediaColumns.RELATIVE_PATH
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.MediaColumns.DATA
+        }
+        return base + extra
+    }
+
+    /**
+     * カーソルの現在行から「フォルダ別」表示・フォルダ非表示機能で使う
+     * フォルダパスを取り出す。API29以降はRELATIVE_PATH(例: "Movies/Camera/")、
+     * それ以前は絶対パス(DATA)の親ディレクトリ名から組み立てる。
+     */
+    private fun folderPathOf(cursor: Cursor): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val col = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val raw = if (col >= 0) cursor.getString(col) else null
+            raw?.trim('/')?.takeIf { it.isNotEmpty() } ?: UNKNOWN_FOLDER
+        } else {
+            @Suppress("DEPRECATION")
+            val col = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            val path = if (col >= 0) cursor.getString(col) else null
+            path?.let { File(it).parentFile?.name }?.takeIf { it.isNotEmpty() } ?: UNKNOWN_FOLDER
+        }
+    }
+
+    companion object {
+        const val UNKNOWN_FOLDER = "(不明なフォルダ)"
     }
 }
