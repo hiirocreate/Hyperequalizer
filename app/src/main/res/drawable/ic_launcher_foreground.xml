@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  背景レイヤー(ic_launcher_background.png)に指定した画像をそのまま
+  アイコン全体として表示するため、前景レイヤーはあえて何も描画しない
+  (完全に透明な)ベクターにしてある。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#00E5C3" android:pathData="M34,30l0,48l40,-24z" />
-    <path android:fillColor="#F2F2F7" android:pathData="M24,74h60v6h-60z" />
-    <path android:fillColor="#F2F2F7" android:pathData="M30,80h6v-14h-6zM42,80h6v-22h-6zM54,80h6v-10h-6zM66,80h6v-18h-6zM78,80h6v-8h-6z" />
-</vector>
+    android:viewportHeight="108" />
