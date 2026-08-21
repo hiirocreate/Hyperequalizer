@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/popupRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/popupPlayerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:use_controller="false"
+        app:resize_mode="fit" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:background="@drawable/bg_scrim_top"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/btnPopupExpand"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_margin="2dp"
+            android:background="@android:color/transparent"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_open_in_full" />
+
+        <ImageButton
+            android:id="@+id/btnPopupClose"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_margin="2dp"
+            android:background="@android:color/transparent"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_close" />
+    </LinearLayout>
+
+</FrameLayout>

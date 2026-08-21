@@ -123,6 +123,11 @@
             android:id="@+id/btnEdit"
             style="@style/PlayerIconButton"
             android:src="@drawable/ic_edit" />
+
+        <ImageButton
+            android:id="@+id/btnPopup"
+            style="@style/PlayerIconButton"
+            android:src="@drawable/ic_popup" />
     </LinearLayout>
 
     <!-- 下部コントロールバー -->
