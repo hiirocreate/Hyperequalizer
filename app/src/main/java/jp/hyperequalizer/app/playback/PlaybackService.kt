@@ -73,7 +73,14 @@ class PlaybackService : MediaSessionService() {
         mediaStateRepo = MediaStateRepository((application as HyperEqApp).database.mediaStateDao())
         val exoPlayer = ExoPlayer.Builder(this).build()
         player = exoPlayer
-        mediaSession = buildMediaSession(exoPlayer)
+        val session = buildMediaSession(exoPlayer)
+        mediaSession = session
+        // 本アプリはPlayerActivity/FloatingPlayerServiceから独自のLocalBinderで直接
+        // バインドしており(onBind参照)、標準のMediaController経由の接続を一切使わないため、
+        // MediaSessionServiceが内部で自動的に行うはずの addSession() 呼び出しが発生しない。
+        // これを呼ばないと通知(バックグラウンド再生の操作・フォアグラウンド化)が
+        // 一切表示されないため、ここで明示的に登録する。
+        addSession(session)
 
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -209,7 +216,10 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         serviceScope.cancel()
-        mediaSession?.release()
+        mediaSession?.let {
+            removeSession(it)
+            it.release()
+        }
         player?.release()
         mediaSession = null
         player = null
@@ -219,7 +229,9 @@ class PlaybackService : MediaSessionService() {
     private fun requirePlayer(): ExoPlayer =
         player ?: ExoPlayer.Builder(this).build().also {
             player = it
-            mediaSession = buildMediaSession(it)
+            val session = buildMediaSession(it)
+            mediaSession = session
+            addSession(session)
         }
 
     companion object {
