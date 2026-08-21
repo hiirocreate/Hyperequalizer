@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import jp.hyperequalizer.app.HyperEqApp
 import jp.hyperequalizer.app.R
 import jp.hyperequalizer.app.data.MediaStateRepository
-import jp.hyperequalizer.app.ui.main.MainActivity
+import jp.hyperequalizer.app.ui.player.PlayerActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -126,14 +126,17 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** 通知やロック画面をタップした際に開く画面(アプリのメイン画面)を設定したMediaSessionを作る */
+    /**
+     * 通知やロック画面をタップした際に「再生中の画面(PlayerActivity)」を直接開くための
+     * MediaSessionを作る。キュー情報を持たないIntentを使い、PlayerActivity側で
+     * 今このServiceが再生しているキューへそのまま接続させる
+     * ([PlayerActivity.newIntentReopenCurrent]参照)。
+     */
     private fun buildMediaSession(exoPlayer: ExoPlayer): MediaSession {
         val contentIntent = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
+            PlayerActivity.newIntentReopenCurrent(this),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return MediaSession.Builder(this, exoPlayer)
