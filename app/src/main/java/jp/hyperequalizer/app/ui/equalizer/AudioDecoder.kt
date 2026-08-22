@@ -11,18 +11,71 @@ import java.nio.ByteOrder
 
 data class DecodedAudio(val pcm: ShortArray, val sampleRate: Int, val channels: Int)
 
+/** ストリーミングデコード時に判明する音声フォーマット情報 */
+data class AudioFormatInfo(val sampleRate: Int, val channels: Int)
+
 /**
  * MediaExtractor + MediaCodec を用いて、動画/音楽ファイルの音声トラックを
  * 16bit PCM (リトルエンディアン, インターリーブ) にデコードする。
  * ボーカル分離処理の前段として使用する。
  *
- * メモリ使用量を抑えるため、先頭 [maxDurationMs] ミリ秒までのみをデコードする
- * (デフォルト8分)。
+ * [decode] は従来通りの一括版(結果を丸ごとメモリに載せる)。AIモデルによる
+ * 分離処理のように、推論の都合上どうしても全体が必要な場合にのみ使う。
+ * [decodeStreaming] はチャンク単位で結果を都度コールバックへ渡す版で、
+ * 通常のセンターチャンネル抽出フォールバック処理はこちらを使うことで、
+ * ファイル全体を一度にメモリへ載せずに済む(メモリ使用量削減対策)。
  */
 object AudioDecoder {
 
-    /** @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため) */
+    /** [decodeStreaming]の進捗コールバック。0.0〜1.0のおおよその処理割合を渡す。 */
+    fun interface ProgressListener {
+        fun onProgress(fraction: Float)
+    }
+
+    /**
+     * 音声トラックを一括デコードして結果をメモリ上にまとめて返す。
+     * メモリ使用量を抑えるため、先頭 [maxDurationMs] ミリ秒までのみをデコードする
+     * (デフォルト8分)。
+     *
+     * @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため)
+     */
     fun decode(context: Context, uri: Uri, maxDurationMs: Long = 8 * 60 * 1000L): DecodedAudio {
+        var sampleRate = 44100
+        var channels = 2
+        val output = ByteArrayOutputStream()
+        decodeStreaming(context, uri, maxDurationMs) { chunk, length, format ->
+            sampleRate = format.sampleRate
+            channels = format.channels
+            val buffer = ByteBuffer.allocate(length * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until length) buffer.putShort(chunk[i])
+            output.write(buffer.array())
+        }
+        val bytes = output.toByteArray()
+        val shortBuffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val pcm = ShortArray(shortBuffer.remaining())
+        shortBuffer.get(pcm)
+        return DecodedAudio(pcm, sampleRate, channels)
+    }
+
+    /**
+     * 音声トラックをチャンク単位でデコードしながら [onChunk] へ順次渡す
+     * (呼び出し元と同じスレッドで同期的に呼ばれる)。デコード結果をまとめて
+     * メモリに保持しないため、長い音声ファイルでもピーク時のメモリ使用量を
+     * チャンク1つ分(数十〜数百KB程度)に抑えられる。
+     *
+     * 以前は全PCMデータを一度にメモリへ載せていたため、数分の音声でも数百MB規模の
+     * メモリを消費し、低メモリ端末で極端に遅くなったり(体感で「処理が全然進まない」
+     * ように見える)、メモリ不足の一因になっていた。
+     *
+     * @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため)
+     */
+    fun decodeStreaming(
+        context: Context,
+        uri: Uri,
+        maxDurationMs: Long = 30 * 60 * 1000L,
+        onProgress: ProgressListener? = null,
+        onChunk: (pcm: ShortArray, length: Int, format: AudioFormatInfo) -> Unit
+    ) {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
@@ -53,6 +106,7 @@ object AudioDecoder {
             format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
         val channels = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT))
             format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+        val audioFormat = AudioFormatInfo(sampleRate, channels)
 
         val codec = try {
             MediaCodec.createDecoderByType(mime).apply {
@@ -64,14 +118,14 @@ object AudioDecoder {
             throw IllegalStateException("この音声形式(${mime})はデコードできませんでした", e)
         }
 
-        val output = ByteArrayOutputStream()
         val bufferInfo = MediaCodec.BufferInfo()
         var sawInputEOS = false
         var sawOutputEOS = false
         val maxBytes = (maxDurationMs * sampleRate / 1000L * channels * 2L)
+        var processedBytes = 0L
 
         try {
-            while (!sawOutputEOS && output.size() < maxBytes) {
+            while (!sawOutputEOS && processedBytes < maxBytes) {
                 if (!sawInputEOS) {
                     val inputIndex = codec.dequeueInputBuffer(10_000)
                     if (inputIndex >= 0) {
@@ -93,11 +147,17 @@ object AudioDecoder {
                     if (bufferInfo.size > 0) {
                         val outBuffer = codec.getOutputBuffer(outputIndex)
                         if (outBuffer != null) {
-                            val chunk = ByteArray(bufferInfo.size)
+                            outBuffer.order(ByteOrder.LITTLE_ENDIAN)
                             outBuffer.position(bufferInfo.offset)
                             outBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            outBuffer.get(chunk)
-                            output.write(chunk)
+                            val shortBuffer = outBuffer.asShortBuffer()
+                            val chunk = ShortArray(shortBuffer.remaining())
+                            shortBuffer.get(chunk)
+                            if (chunk.isNotEmpty()) {
+                                onChunk(chunk, chunk.size, audioFormat)
+                                processedBytes += chunk.size * 2L
+                                onProgress?.onProgress((processedBytes.toFloat() / maxBytes.toFloat()).coerceIn(0f, 1f))
+                            }
                         }
                     }
                     codec.releaseOutputBuffer(outputIndex, false)
@@ -105,7 +165,7 @@ object AudioDecoder {
                         sawOutputEOS = true
                         break
                     }
-                    if (output.size() >= maxBytes) break
+                    if (processedBytes >= maxBytes) break
                     outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
                 }
             }
@@ -114,11 +174,5 @@ object AudioDecoder {
             codec.release()
             extractor.release()
         }
-
-        val bytes = output.toByteArray()
-        val shortBuffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val pcm = ShortArray(shortBuffer.remaining())
-        shortBuffer.get(pcm)
-        return DecodedAudio(pcm, sampleRate, channels)
     }
 }

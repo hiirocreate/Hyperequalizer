@@ -64,8 +64,7 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             binding.vocalVolumeSeekBar.progress = (state.vocalVolume * 100).toInt().coerceIn(0, 200)
             binding.instrumentalVolumeSeekBar.progress = (state.instrumentalVolume * 100).toInt().coerceIn(0, 200)
             binding.vocalVolumeValueLabel.text = getString(R.string.percent_format, binding.vocalVolumeSeekBar.progress)
-            binding.instrumentalVolumeValueLabel.text =
-                getString(R.string.percent_format, binding.instrumentalVolumeSeekBar.progress)
+            binding.instrumentalVolumeValueLabel.text = getString(R.string.percent_format, binding.instrumentalVolumeSeekBar.progress)
             updateSeparationStatusUi()
             if (separationStatus == SeparationStatus.DONE && vocalPath != null && instrumentalPath != null) {
                 playerActivity()?.activateSeparatedPlayback(
@@ -170,24 +169,21 @@ class EqualizerSheet : BottomSheetDialogFragment() {
         }
     }
 
-    /** ミリベル(1/100dB)単位の帯域ゲインを、+3dB/0dB/-2dBのような分かりやすい表記にする */
+    /** millibel(1/100dB)単位のバンドゲイン値を "+3dB"/"0dB"/"-2dB" のような表示用文字列にする */
     private fun formatDb(levelMillibel: Short): String {
         val db = levelMillibel / 100
-        return when {
-            db > 0 -> "+${db}dB"
-            db < 0 -> "${db}dB"
-            else -> "0dB"
-        }
+        return if (db > 0) "+${db}dB" else "${db}dB"
     }
 
-    /** 全帯域と重低音強調を基準値(変化なし)に戻す */
+    /** イコライザー全帯域と重低音強調を基準値(変化なし)へ戻す */
     private fun resetEq() {
         val eq = equalizer
         if (eq != null) {
             for (band in 0 until eq.numberOfBands) {
-                eq.setBandLevel(band.toShort(), 0)
-                val rowView = binding.bandsContainer.getChildAt(band)
+                val bandShort = band.toShort()
+                eq.setBandLevel(bandShort, 0)
                 val range = eq.bandLevelRange
+                val rowView = binding.bandsContainer.getChildAt(band)
                 rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (0 - range[0]).toInt()
                 rowView?.findViewById<android.widget.TextView>(R.id.bandValueLabel)?.text = formatDb(0)
             }
@@ -225,45 +221,45 @@ class EqualizerSheet : BottomSheetDialogFragment() {
         lifecycleScope.launch {
             repo.updateSeparation(currentUri, null, null, SeparationStatus.PROCESSING)
             val engine = SeparationEngine(requireContext())
-            // decode/書き出し処理のどこかで例外(ストレージ不足やI/Oエラーなど)が
-            // 発生した場合、以前は捕捉されずクラッシュしていた。ここで確実に受け止め、
-            // 「失敗」として画面に理由を表示するだけに留める。
-            var failureReason: String? = null
-            val result = try {
-                engine.separate(Uri.parse(currentUri)) { progress ->
+            try {
+                val result = engine.separate(Uri.parse(currentUri)) { progress ->
                     binding.separationProgress.progress = progress
                 }
-            } catch (e: Exception) {
-                failureReason = e.message
-                null
-            }
-            binding.btnSeparateNow.isEnabled = true
-            binding.separationProgress.visibility = View.GONE
-            if (result != null) {
                 vocalPath = result.vocalPath
                 instrumentalPath = result.instrumentalPath
                 separationStatus = SeparationStatus.DONE
                 repo.updateSeparation(currentUri, result.vocalPath, result.instrumentalPath, SeparationStatus.DONE)
+                binding.vocalVolumeSeekBar.isEnabled = true
+                binding.instrumentalVolumeSeekBar.isEnabled = true
+                // AI/フォールバックのどちらで処理されたかで案内文を分ける
+                // (updateSeparationStatusUi()はこの区別をしないので、ここで直接設定する)
                 binding.separationStatusText.text = if (result.usedAiModel) {
                     getString(R.string.eq_separation_done)
                 } else {
                     getString(R.string.eq_separation_fallback)
                 }
-                updateSeparationStatusUi()
                 playerActivity()?.activateSeparatedPlayback(
                     result.vocalPath, result.instrumentalPath,
                     binding.vocalVolumeSeekBar.progress / 100f,
                     binding.instrumentalVolumeSeekBar.progress / 100f
                 )
-            } else {
+            } catch (e: Exception) {
+                // 失敗理由をそのまま画面に表示することで、次回同じ問題が起きたときに
+                // 具体的な原因を報告してもらいやすくする(AudioDecoder/SeparationEngine側で
+                // 理由付きのIllegalStateExceptionをthrowするようにしてある)。
                 separationStatus = SeparationStatus.FAILED
                 repo.updateSeparation(currentUri, null, null, SeparationStatus.FAILED)
-                updateSeparationStatusUi()
-                // 失敗理由が分かる場合は併記する(音声トラックが無い/デコード不可、など)
-                if (failureReason != null) {
-                    binding.separationStatusText.text =
-                        "${getString(R.string.eq_separation_failed)}(${failureReason})"
+                binding.vocalVolumeSeekBar.isEnabled = false
+                binding.instrumentalVolumeSeekBar.isEnabled = false
+                val failureReason = e.message
+                binding.separationStatusText.text = if (!failureReason.isNullOrBlank()) {
+                    "${getString(R.string.eq_separation_failed)}(${failureReason})"
+                } else {
+                    getString(R.string.eq_separation_failed)
                 }
+            } finally {
+                binding.btnSeparateNow.isEnabled = true
+                binding.separationProgress.visibility = View.GONE
             }
         }
     }

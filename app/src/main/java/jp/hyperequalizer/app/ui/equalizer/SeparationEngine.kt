@@ -2,6 +2,8 @@ package jp.hyperequalizer.app.ui.equalizer
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
@@ -25,55 +27,102 @@ data class SeparationResult(val vocalPath: String, val instrumentalPath: String,
  *    - center = (L+R)/2 … ボーカルや中央定位の音を多く含む
  *    - side   = (L-R)/2 … 左右に広がる伴奏(楽器)を多く含む
  *    完璧な分離ではないが、追加ファイル無しでその場で動作する。
+ *
+ * (2)のフォールバック処理が実際にはほぼ常に使われるルートであるため、
+ * こちらは「デコード→分離→WAV書き込み」をチャンク単位でパイプライン処理し、
+ * ファイル全体を一度にメモリへ載せないようにしてある。以前は数分の音声でも
+ * 数百MB規模のメモリを一時的に確保しており、低メモリ端末で極端に遅くなったり
+ * (体感で「処理が全然進まない」ように見える)、メモリ不足の一因になっていた。
+ *
+ * @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため)
  */
 class SeparationEngine(private val context: Context) {
+
+    // 進捗コールバックはDispatchers.Defaultのスレッドから呼ばれるが、呼び出し元は
+    // 多くの場合UIを直接更新するため、必ずメインスレッドへ乗せ替えてから呼び出す。
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     suspend fun separate(
         uri: Uri,
         onProgress: (Int) -> Unit
-    ): SeparationResult? = withContext(Dispatchers.Default) {
-        onProgress(5)
-        // 失敗時はAudioDecoder側でIllegalStateExceptionをthrowする(理由付き)。
-        // ここでは捕まえず、呼び出し元(EqualizerSheet)まで伝播させて画面に理由を出す。
-        val decoded = AudioDecoder.decode(context, uri)
-        onProgress(35)
-
-        val aiResult = tryAiSeparation(decoded)
-        onProgress(70)
-
-        val (vocalPcm, instrumentalPcm, usedAi) = if (aiResult != null) {
-            Triple(aiResult.first, aiResult.second, true)
-        } else {
-            val fallback = centerChannelSeparate(decoded)
-            Triple(fallback.first, fallback.second, false)
+    ): SeparationResult = withContext(Dispatchers.Default) {
+        reportProgress(onProgress, 2)
+        val modelFile = copyAssetModelToCacheIfPresent()
+        if (modelFile != null) {
+            val aiResult = tryAiSeparationFull(uri, modelFile, onProgress)
+            if (aiResult != null) return@withContext aiResult
+            // モデルはあるが推論に失敗した場合は、下のストリーミング版フォールバックへ続行する
         }
-        onProgress(90)
+        separateCenterChannelStreaming(uri, onProgress)
+    }
 
+    private fun reportProgress(onProgress: (Int) -> Unit, percent: Int) {
+        val p = percent.coerceIn(0, 100)
+        mainHandler.post { onProgress(p) }
+    }
+
+    /**
+     * 通常ケース(AIモデル未配置、またはAI推論失敗時)のフォールバック処理。
+     * [AudioDecoder.decodeStreaming] でチャンクを受け取るたびにその場で
+     * ミッドサイド分離し、[WavWriter.StreamWriter] で都度ファイルへ追記する。
+     */
+    private fun separateCenterChannelStreaming(uri: Uri, onProgress: (Int) -> Unit): SeparationResult {
         val outDir = File(context.cacheDir, "separated/${uri.toString().hashCode()}")
         outDir.mkdirs()
         val vocalFile = File(outDir, "vocal.wav")
         val instrumentalFile = File(outDir, "instrumental.wav")
-        WavWriter.write(vocalFile, vocalPcm, decoded.sampleRate, decoded.channels)
-        WavWriter.write(instrumentalFile, instrumentalPcm, decoded.sampleRate, decoded.channels)
-        onProgress(100)
 
-        SeparationResult(vocalFile.absolutePath, instrumentalFile.absolutePath, usedAi)
+        var writers: Pair<WavWriter.StreamWriter, WavWriter.StreamWriter>? = null
+        var lastReported = -1
+
+        try {
+            AudioDecoder.decodeStreaming(
+                context = context,
+                uri = uri,
+                onProgress = AudioDecoder.ProgressListener { fraction ->
+                    // デコード〜書き込みまでを合わせて2%〜95%の範囲で進捗表示する
+                    val pct = (2 + fraction * 93).toInt().coerceIn(2, 95)
+                    if (pct != lastReported) {
+                        lastReported = pct
+                        reportProgress(onProgress, pct)
+                    }
+                }
+            ) { chunk, length, format ->
+                val (vocalWriter, instrumentalWriter) = writers ?: (
+                    WavWriter.StreamWriter(vocalFile, format.sampleRate, format.channels) to
+                        WavWriter.StreamWriter(instrumentalFile, format.sampleRate, format.channels)
+                    ).also { writers = it }
+                val (vocalChunk, instrumentalChunk) = centerChannelSeparateChunk(chunk, length, format.channels)
+                vocalWriter.append(vocalChunk)
+                instrumentalWriter.append(instrumentalChunk)
+            }
+        } finally {
+            writers?.let { (v, i) -> v.close(); i.close() }
+        }
+
+        if (writers == null) {
+            // 音声データが1バイトも得られなかった(空ファイル/極端に短いファイルなど)
+            throw IllegalStateException("音声データを取得できませんでした")
+        }
+        reportProgress(onProgress, 100)
+        return SeparationResult(vocalFile.absolutePath, instrumentalFile.absolutePath, usedAiModel = false)
     }
 
     /**
-     * ミッドサイド処理による簡易分離(フォールバック)。
-     * モノラル音源の場合はセンター抽出ができないため、両トラックとも原音をそのまま返す。
+     * 1チャンク分のミッドサイド処理による簡易分離。
+     * モノラルの場合はセンター抽出ができないため、両トラックとも原音をそのまま複製して返す。
      */
-    private fun centerChannelSeparate(decoded: DecodedAudio): Pair<ShortArray, ShortArray> {
-        if (decoded.channels != 2) {
-            return Pair(decoded.pcm.copyOf(), decoded.pcm.copyOf())
+    private fun centerChannelSeparateChunk(pcm: ShortArray, length: Int, channels: Int): Pair<ShortArray, ShortArray> {
+        if (channels != 2) {
+            val copy = if (length == pcm.size) pcm.copyOf() else pcm.copyOf(length)
+            return Pair(copy, copy.copyOf())
         }
-        val n = decoded.pcm.size / 2
-        val vocal = ShortArray(decoded.pcm.size)
-        val instrumental = ShortArray(decoded.pcm.size)
+        val n = length / 2
+        val vocal = ShortArray(n * 2)
+        val instrumental = ShortArray(n * 2)
         for (i in 0 until n) {
-            val l = decoded.pcm[i * 2].toInt()
-            val r = decoded.pcm[i * 2 + 1].toInt()
+            val l = pcm[i * 2].toInt()
+            val r = pcm[i * 2 + 1].toInt()
             val center = (l + r) / 2
             val side = (l - r) / 2
             // ボーカル(推定): 中央定位成分(center)を両chに複製
@@ -90,17 +139,29 @@ class SeparationEngine(private val context: Context) {
     private fun clampShort(v: Int): Short = max(-32768, min(32767, v)).toShort()
 
     /**
-     * assets/models/vocal_separator.tflite が存在すれば読み込み、分離を試みる。
-     * モデルの入出力テンソル形状は実行時に検査し、扱えない場合や例外発生時は null を返す
-     * (呼び出し側でフォールバック処理される)。
+     * assets/models/vocal_separator.tflite が存在する場合の処理。TFLiteモデルは
+     * 固定長ウィンドウでの推論が前提のため、こちらは従来通り音声全体を一度に
+     * メモリへ載せてから処理する(ストリーミング化していない)。モデル未配置が
+     * 通常ケースであり、この関数が実際に呼ばれることは現状ない。
+     * 推論に失敗した場合はnullを返し、呼び出し元がフォールバックへ切り替える。
      */
-    private fun tryAiSeparation(decoded: DecodedAudio): Pair<ShortArray, ShortArray>? {
-        val modelFile = copyAssetModelToCacheIfPresent() ?: return null
+    private fun tryAiSeparationFull(uri: Uri, modelFile: File, onProgress: (Int) -> Unit): SeparationResult? {
         return try {
+            val decoded = AudioDecoder.decode(context, uri)
+            reportProgress(onProgress, 35)
             val interpreter = Interpreter(loadModelBuffer(modelFile))
             val result = runInterpreter(interpreter, decoded)
             interpreter.close()
-            result
+            if (result == null) return null
+            reportProgress(onProgress, 70)
+            val outDir = File(context.cacheDir, "separated/${uri.toString().hashCode()}")
+            outDir.mkdirs()
+            val vocalFile = File(outDir, "vocal.wav")
+            val instrumentalFile = File(outDir, "instrumental.wav")
+            WavWriter.write(vocalFile, result.first, decoded.sampleRate, decoded.channels)
+            WavWriter.write(instrumentalFile, result.second, decoded.sampleRate, decoded.channels)
+            reportProgress(onProgress, 100)
+            SeparationResult(vocalFile.absolutePath, instrumentalFile.absolutePath, usedAiModel = true)
         } catch (e: Exception) {
             null
         }
