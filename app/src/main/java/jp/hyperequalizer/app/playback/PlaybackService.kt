@@ -9,6 +9,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mp3.Mp3Extractor
+import androidx.media3.extractor.ts.AdtsExtractor
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -71,7 +75,7 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         mediaStateRepo = MediaStateRepository((application as HyperEqApp).database.mediaStateDao())
-        val exoPlayer = ExoPlayer.Builder(this).build()
+        val exoPlayer = buildExoPlayer()
         player = exoPlayer
         val session = buildMediaSession(exoPlayer)
         mediaSession = session
@@ -230,12 +234,33 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun requirePlayer(): ExoPlayer =
-        player ?: ExoPlayer.Builder(this).build().also {
+        player ?: buildExoPlayer().also {
             player = it
             val session = buildMediaSession(it)
             mediaSession = session
             addSession(session)
         }
+
+    /**
+     * 拡張子.aac(生のADTS AACストリーム)や.mp3のようにコンテナ自体に総再生時間の
+     * 情報を持たないファイルは、標準のExoPlayer.Builder(this).build()のままだと
+     * 内部のAdtsExtractor/Mp3Extractorが総再生時間を算出できず、
+     * player.duration が C.TIME_UNSET(=画面には00:00)のままとなり、
+     * シークバーも機能しない状態になっていた(再生自体は可能なため気づきにくい)。
+     *
+     * FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS を指定すると、ファイル全体を
+     * 平均ビットレートとみなして総再生時間・シーク位置を推定するようになるため、
+     * (完全に正確な値ではないが)実用上問題ない精度で再生時間表示とシークが機能する。
+     */
+    private fun buildExoPlayer(): ExoPlayer {
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setAdtsExtractorFlags(AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
+            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
+        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
+        return ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+    }
 
     companion object {
         const val ACTION_LOCAL_BIND = "jp.hyperequalizer.app.action.LOCAL_BIND"
