@@ -50,6 +50,7 @@
     <string name="loop_type_ab_short">AB</string>
 
     <string name="speed_label">再生速度 %1$.2fx</string>
+    <string name="playback_error_format">再生エラー: %1$s</string>
 
     <string name="eq_title">イコライザー</string>
     <string name="eq_enable">イコライザーを有効にする</string>
