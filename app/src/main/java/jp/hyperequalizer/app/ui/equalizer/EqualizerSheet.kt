@@ -63,6 +63,9 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             instrumentalPath = state.separatedInstrumentalPath
             binding.vocalVolumeSeekBar.progress = (state.vocalVolume * 100).toInt().coerceIn(0, 200)
             binding.instrumentalVolumeSeekBar.progress = (state.instrumentalVolume * 100).toInt().coerceIn(0, 200)
+            binding.vocalVolumeValueLabel.text = getString(R.string.percent_format, binding.vocalVolumeSeekBar.progress)
+            binding.instrumentalVolumeValueLabel.text =
+                getString(R.string.percent_format, binding.instrumentalVolumeSeekBar.progress)
             updateSeparationStatusUi()
             if (separationStatus == SeparationStatus.DONE && vocalPath != null && instrumentalPath != null) {
                 playerActivity()?.activateSeparatedPlayback(
@@ -73,10 +76,17 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             }
         }
 
-        binding.vocalVolumeSeekBar.setOnSeekBarChangeListener(simpleSeekListener { applyVolumes() })
-        binding.instrumentalVolumeSeekBar.setOnSeekBarChangeListener(simpleSeekListener { applyVolumes() })
+        binding.vocalVolumeSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
+            binding.vocalVolumeValueLabel.text = getString(R.string.percent_format, it)
+            applyVolumes()
+        })
+        binding.instrumentalVolumeSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
+            binding.instrumentalVolumeValueLabel.text = getString(R.string.percent_format, it)
+            applyVolumes()
+        })
 
         binding.btnSeparateNow.setOnClickListener { startSeparation() }
+        binding.btnEqReset.setOnClickListener { resetEq() }
     }
 
     private fun playerActivity(): PlayerActivity? = activity as? PlayerActivity
@@ -101,8 +111,11 @@ class EqualizerSheet : BottomSheetDialogFragment() {
                 itemBinding.bandFreqLabel.text = if (freqHz >= 1000) "${freqHz / 1000}kHz" else "${freqHz}Hz"
                 itemBinding.bandSeekBar.max = (range[1] - range[0]).toInt()
                 itemBinding.bandSeekBar.progress = (eq.getBandLevel(bandShort) - range[0]).toInt()
+                itemBinding.bandValueLabel.text = formatDb(eq.getBandLevel(bandShort))
                 itemBinding.bandSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
-                    eq.setBandLevel(bandShort, (it + range[0]).toShort())
+                    val level = (it + range[0]).toShort()
+                    eq.setBandLevel(bandShort, level)
+                    itemBinding.bandValueLabel.text = formatDb(level)
                     persistEqSoon()
                 })
                 binding.bandsContainer.addView(itemBinding.root)
@@ -117,6 +130,7 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             if (bb.strengthSupported) {
                 binding.bassBoostSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
                     bb.setStrength(it.toShort())
+                    binding.bassBoostValueLabel.text = getString(R.string.percent_format, it / 10)
                     persistEqSoon()
                 })
             } else {
@@ -133,6 +147,7 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             equalizer?.enabled = state.eqEnabled
             bassBoost?.enabled = state.eqEnabled
             binding.bassBoostSeekBar.progress = state.bassBoostStrength
+            binding.bassBoostValueLabel.text = getString(R.string.percent_format, state.bassBoostStrength / 10)
             bassBoost?.let { if (it.strengthSupported) it.setStrength(state.bassBoostStrength.toShort()) }
             state.eqBandLevelsCsv?.split(",")?.forEachIndexed { index, v ->
                 val level = v.toShortOrNull() ?: return@forEachIndexed
@@ -142,6 +157,7 @@ class EqualizerSheet : BottomSheetDialogFragment() {
                         val range = eq.bandLevelRange
                         val rowView = binding.bandsContainer.getChildAt(index)
                         rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (level - range[0]).toInt()
+                        rowView?.findViewById<android.widget.TextView>(R.id.bandValueLabel)?.text = formatDb(level)
                     }
                 }
             }
@@ -152,6 +168,34 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             bassBoost?.enabled = checked
             persistEqSoon()
         }
+    }
+
+    /** ミリベル(1/100dB)単位の帯域ゲインを、+3dB/0dB/-2dBのような分かりやすい表記にする */
+    private fun formatDb(levelMillibel: Short): String {
+        val db = levelMillibel / 100
+        return when {
+            db > 0 -> "+${db}dB"
+            db < 0 -> "${db}dB"
+            else -> "0dB"
+        }
+    }
+
+    /** 全帯域と重低音強調を基準値(変化なし)に戻す */
+    private fun resetEq() {
+        val eq = equalizer
+        if (eq != null) {
+            for (band in 0 until eq.numberOfBands) {
+                eq.setBandLevel(band.toShort(), 0)
+                val rowView = binding.bandsContainer.getChildAt(band)
+                val range = eq.bandLevelRange
+                rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (0 - range[0]).toInt()
+                rowView?.findViewById<android.widget.TextView>(R.id.bandValueLabel)?.text = formatDb(0)
+            }
+        }
+        bassBoost?.let { if (it.strengthSupported) it.setStrength(0) }
+        binding.bassBoostSeekBar.progress = 0
+        binding.bassBoostValueLabel.text = getString(R.string.percent_format, 0)
+        persistEqSoon()
     }
 
     private fun setupVocalSeparationUi() {
@@ -166,8 +210,8 @@ class EqualizerSheet : BottomSheetDialogFragment() {
         binding.separationStatusText.text = when (separationStatus) {
             SeparationStatus.DONE -> getString(R.string.eq_separation_done)
             SeparationStatus.PROCESSING -> ""
-            SeparationStatus.FAILED -> "分離処理に失敗しました"
-            SeparationStatus.NONE -> "未処理: 下のボタンでボーカル/伴奏を分離できます"
+            SeparationStatus.FAILED -> getString(R.string.eq_separation_failed)
+            SeparationStatus.NONE -> getString(R.string.eq_separation_none)
         }
     }
 
@@ -181,8 +225,17 @@ class EqualizerSheet : BottomSheetDialogFragment() {
         lifecycleScope.launch {
             repo.updateSeparation(currentUri, null, null, SeparationStatus.PROCESSING)
             val engine = SeparationEngine(requireContext())
-            val result = engine.separate(Uri.parse(currentUri)) { progress ->
-                binding.separationProgress.progress = progress
+            // decode/書き出し処理のどこかで例外(ストレージ不足やI/Oエラーなど)が
+            // 発生した場合、以前は捕捉されずクラッシュしていた。ここで確実に受け止め、
+            // 「失敗」として画面に理由を表示するだけに留める。
+            var failureReason: String? = null
+            val result = try {
+                engine.separate(Uri.parse(currentUri)) { progress ->
+                    binding.separationProgress.progress = progress
+                }
+            } catch (e: Exception) {
+                failureReason = e.message
+                null
             }
             binding.btnSeparateNow.isEnabled = true
             binding.separationProgress.visibility = View.GONE
@@ -206,6 +259,11 @@ class EqualizerSheet : BottomSheetDialogFragment() {
                 separationStatus = SeparationStatus.FAILED
                 repo.updateSeparation(currentUri, null, null, SeparationStatus.FAILED)
                 updateSeparationStatusUi()
+                // 失敗理由が分かる場合は併記する(音声トラックが無い/デコード不可、など)
+                if (failureReason != null) {
+                    binding.separationStatusText.text =
+                        "${getString(R.string.eq_separation_failed)}(${failureReason})"
+                }
             }
         }
     }

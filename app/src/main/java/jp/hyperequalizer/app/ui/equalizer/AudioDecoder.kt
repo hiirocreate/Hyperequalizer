@@ -21,13 +21,14 @@ data class DecodedAudio(val pcm: ShortArray, val sampleRate: Int, val channels: 
  */
 object AudioDecoder {
 
-    fun decode(context: Context, uri: Uri, maxDurationMs: Long = 8 * 60 * 1000L): DecodedAudio? {
+    /** @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため) */
+    fun decode(context: Context, uri: Uri, maxDurationMs: Long = 8 * 60 * 1000L): DecodedAudio {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
         } catch (e: Exception) {
             extractor.release()
-            return null
+            throw IllegalStateException("音声データを開けませんでした", e)
         }
 
         var trackIndex = -1
@@ -43,7 +44,7 @@ object AudioDecoder {
         }
         if (trackIndex == -1 || format == null) {
             extractor.release()
-            return null
+            throw IllegalStateException("音声トラックが見つかりませんでした")
         }
         extractor.selectTrack(trackIndex)
 
@@ -53,9 +54,15 @@ object AudioDecoder {
         val channels = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT))
             format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
 
-        val codec = MediaCodec.createDecoderByType(mime)
-        codec.configure(format, null, null, 0)
-        codec.start()
+        val codec = try {
+            MediaCodec.createDecoderByType(mime).apply {
+                configure(format, null, null, 0)
+                start()
+            }
+        } catch (e: Exception) {
+            extractor.release()
+            throw IllegalStateException("この音声形式(${mime})はデコードできませんでした", e)
+        }
 
         val output = ByteArrayOutputStream()
         val bufferInfo = MediaCodec.BufferInfo()

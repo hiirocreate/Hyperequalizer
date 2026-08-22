@@ -33,7 +33,9 @@ class SeparationEngine(private val context: Context) {
         onProgress: (Int) -> Unit
     ): SeparationResult? = withContext(Dispatchers.Default) {
         onProgress(5)
-        val decoded = AudioDecoder.decode(context, uri) ?: return@withContext null
+        // 失敗時はAudioDecoder側でIllegalStateExceptionをthrowする(理由付き)。
+        // ここでは捕まえず、呼び出し元(EqualizerSheet)まで伝播させて画面に理由を出す。
+        val decoded = AudioDecoder.decode(context, uri)
         onProgress(35)
 
         val aiResult = tryAiSeparation(decoded)
