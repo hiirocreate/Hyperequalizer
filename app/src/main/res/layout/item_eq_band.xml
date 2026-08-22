@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -12,8 +13,7 @@
         android:layout_height="wrap_content"
         android:textColor="@color/hyper_muted"
         android:textSize="11sp"
-        tools:text="1kHz"
-        xmlns:tools="http://schemas.android.com/tools" />
+        tools:text="1kHz" />
 
     <SeekBar
         android:id="@+id/bandSeekBar"
@@ -22,4 +22,15 @@
         android:layout_weight="1"
         android:progressTint="@color/hyper_primary"
         android:thumbTint="@color/hyper_primary" />
+
+    <!-- 現在のゲイン値(例: +3dB)。以前はスライダーの位置しか手がかりが無く
+         直感的に分かりにくかったため、実際の数値を常に表示するようにした。 -->
+    <TextView
+        android:id="@+id/bandValueLabel"
+        android:layout_width="44dp"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:textColor="@color/hyper_on_surface"
+        android:textSize="11sp"
+        tools:text="+3dB" />
 </LinearLayout>
