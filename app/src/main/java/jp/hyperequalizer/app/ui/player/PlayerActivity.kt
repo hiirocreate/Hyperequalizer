@@ -32,16 +32,20 @@ import jp.hyperequalizer.app.data.MediaStateRepository
 import jp.hyperequalizer.app.data.MediaType
 import jp.hyperequalizer.app.databinding.ActivityPlayerBinding
 import jp.hyperequalizer.app.playback.FloatingPlayerService
+import jp.hyperequalizer.app.playback.PendingPlaybackQueue
 import jp.hyperequalizer.app.playback.PlaybackServiceConnector
 import jp.hyperequalizer.app.ui.editor.EditorActivity
 import jp.hyperequalizer.app.ui.equalizer.EqualizerSheet
 import jp.hyperequalizer.app.ui.equalizer.SeparatedPlaybackController
 import jp.hyperequalizer.app.util.BrightnessController
+import jp.hyperequalizer.app.util.MediaDisplayNameResolver
 import jp.hyperequalizer.app.util.TimeFormatter
 import jp.hyperequalizer.app.util.VolumeController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 動画・音楽 共通の再生画面。
@@ -76,6 +80,8 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     private val speedSteps = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
     private var speedIndex = 2
     private var separatedController: SeparatedPlaybackController? = null
+    private var startIndexFromLaunch: Int = 0
+    private var shuffleFromLaunch: Boolean = false
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -130,10 +136,28 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         if (single != null) {
             queueUris = listOf(single)
             queueTypes = listOf(intent.getStringExtra(EXTRA_MEDIA_TYPE) ?: MediaType.VIDEO.name)
-        } else {
-            queueUris = intent.getStringArrayListExtra(EXTRA_QUEUE_URIS) ?: emptyList()
-            queueTypes = intent.getStringArrayListExtra(EXTRA_QUEUE_TYPES) ?: emptyList()
+            startIndexFromLaunch = 0
+            shuffleFromLaunch = false
+            return
         }
+        if (intent.getBooleanExtra(EXTRA_HAS_PENDING_QUEUE, false)) {
+            // 一覧画面などから大量件数のキューを渡された場合。Intent(Binder IPC)経由で
+            // URIリストをまるごと運ぶとサイズ上限を超えてクラッシュすることがあったため、
+            // 実体は PendingPlaybackQueue(同一プロセス内)から受け取る。
+            val pending = PendingPlaybackQueue.take()
+            if (pending != null) {
+                queueUris = pending.uris
+                queueTypes = pending.types
+                startIndexFromLaunch = pending.startIndex
+                shuffleFromLaunch = pending.shuffle
+                return
+            }
+        }
+        // 後方互換: 直接Intent extrasにキューが載っている旧来の呼び出し方(件数が少ない場合)
+        queueUris = intent.getStringArrayListExtra(EXTRA_QUEUE_URIS) ?: emptyList()
+        queueTypes = intent.getStringArrayListExtra(EXTRA_QUEUE_TYPES) ?: emptyList()
+        startIndexFromLaunch = intent.getIntExtra(EXTRA_START_INDEX, 0)
+        shuffleFromLaunch = intent.getBooleanExtra(EXTRA_SHUFFLE, false)
     }
 
     private fun buildMediaQueueAndPrepare() {
@@ -152,8 +176,8 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         }
         var uris = queueUris
         var types = queueTypes
-        var startIndex = intent.getIntExtra(EXTRA_START_INDEX, 0).coerceIn(0, uris.size - 1)
-        val shuffle = intent.getBooleanExtra(EXTRA_SHUFFLE, false)
+        var startIndex = startIndexFromLaunch.coerceIn(0, uris.size - 1)
+        val shuffle = shuffleFromLaunch
 
         // ポップアップ表示や通知タップなどから、既に再生中と同じメディアの画面へ
         // 戻ってきた場合は、キューを再構築せず今の再生状態(位置・再生中かどうか)を
@@ -242,11 +266,55 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         restoreStateForCurrent()
     }
 
+    /**
+     * 表示用のファイル名を返す。content:// URIの [Uri.lastPathSegment] は
+     * 単なる数字のIDでしかないため、それだけでは「通知や再生画面のタイトルが
+     * 数字になる」問題が再発してしまう。ここではまずキャッシュ済みの実ファイル名が
+     * あればそれを返し、無ければ非同期でMediaStoreに問い合わせて解決する
+     * ([resolveDisplayNameAsync])。解決が終わるまでの間は暫定的に数字IDなどを表示する。
+     */
     private fun displayNameOf(uriString: String): String {
+        MediaDisplayNameResolver.peek(uriString)?.let { return it }
+        resolveDisplayNameAsync(uriString)
         return try {
             Uri.parse(uriString).lastPathSegment ?: uriString
         } catch (e: Exception) {
             uriString
+        }
+    }
+
+    /**
+     * MediaStoreへ問い合わせて実ファイル名を非同期で解決する。判明したら
+     * (1) 今まさに表示中の曲/動画であれば画面上のタイトル表示を更新し、
+     * (2) 通知に表示されるメタデータ(MediaItemのタイトル)も実ファイル名に更新する。
+     * これにより「通知の表示名が数字のまま」という問題を解消する。
+     */
+    private fun resolveDisplayNameAsync(uriString: String) {
+        lifecycleScope.launch {
+            val resolved = withContext(Dispatchers.IO) {
+                MediaDisplayNameResolver.resolve(applicationContext, uriString)
+            }
+            if (currentUri == uriString) {
+                binding.titleText.text = resolved
+            }
+            if (playerReady) {
+                updateMediaItemTitle(uriString, resolved)
+            }
+        }
+    }
+
+    /** 指定URIに対応するMediaItemのタイトルメタデータを実ファイル名に差し替える(通知表示の更新用) */
+    private fun updateMediaItemTitle(uriString: String, resolvedName: String) {
+        for (i in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(i)
+            if (item.localConfiguration?.uri?.toString() == uriString &&
+                item.mediaMetadata.title?.toString() != resolvedName
+            ) {
+                val updated = item.buildUpon()
+                    .setMediaMetadata(item.mediaMetadata.buildUpon().setTitle(resolvedName).build())
+                    .build()
+                player.replaceMediaItem(i, updated)
+            }
         }
     }
 
@@ -735,6 +803,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         private const val EXTRA_START_INDEX = "extra_start_index"
         private const val EXTRA_SHUFFLE = "extra_shuffle"
 
+        /** キュー本体をIntentに載せず[PendingPlaybackQueue]経由で渡したことを示す目印 */
+        private const val EXTRA_HAS_PENDING_QUEUE = "extra_has_pending_queue"
+
         /** MediaItemのメタデータ(extras)に種別(動画/音楽)を埋め込むためのキー */
         private const val EXTRA_MEDIA_ITEM_TYPE = "media_item_type"
 
@@ -743,18 +814,26 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
                 .putExtra(EXTRA_URI, uri.toString())
                 .putExtra(EXTRA_MEDIA_TYPE, mediaType.name)
 
+        /**
+         * 再生キュー(URIリスト)を渡して再生画面を起動するIntentを作る。
+         *
+         * 一覧画面全体(数百〜数千件)がそのまま渡ってくることがあるため、キュー本体は
+         * Intent extrasには載せず [PendingPlaybackQueue] という同一プロセス内の
+         * 受け渡し場所に直接セットする。Intent extrasに文字列配列としてそのまま載せると
+         * Binder IPCのトランザクションサイズ上限(端末あたり約1MB)を超えて
+         * TransactionTooLargeExceptionでクラッシュすることがあったため。
+         */
         fun newIntentForQueue(
             context: Context,
             uris: List<String>,
             types: List<String>,
             startIndex: Int,
             shuffle: Boolean
-        ): Intent =
-            Intent(context, PlayerActivity::class.java)
-                .putStringArrayListExtra(EXTRA_QUEUE_URIS, ArrayList(uris))
-                .putStringArrayListExtra(EXTRA_QUEUE_TYPES, ArrayList(types))
-                .putExtra(EXTRA_START_INDEX, startIndex)
-                .putExtra(EXTRA_SHUFFLE, shuffle)
+        ): Intent {
+            PendingPlaybackQueue.set(uris, types, startIndex, shuffle)
+            return Intent(context, PlayerActivity::class.java)
+                .putExtra(EXTRA_HAS_PENDING_QUEUE, true)
+        }
 
         /**
          * 通知(PlaybackServiceの再生中通知)をタップした時に使う、キュー情報を
