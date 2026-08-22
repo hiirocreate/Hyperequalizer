@@ -83,11 +83,15 @@ class GestureOverlayView @JvmOverloads constructor(
                     listener?.onScrubBy(deltaMs.toLong())
                 }
                 DragMode.VERTICAL_BRIGHTNESS -> {
-                    val delta = (-distanceY / height.coerceAtLeast(1))
+                    // distanceYは「前回位置 - 今回位置」(GestureDetectorの仕様)なので、
+                    // 上方向へのスワイプで正の値になる。符号をそのまま使うことで
+                    // 「上にスワイプ = 増やす、下にスワイプ = 減らす」という直感的な
+                    // 方向に統一している(以前は符号を反転させていたため逆になっていた)。
+                    val delta = (distanceY / height.coerceAtLeast(1))
                     listener?.onBrightnessDelta(delta)
                 }
                 DragMode.VERTICAL_VOLUME -> {
-                    val delta = (-distanceY / height.coerceAtLeast(1))
+                    val delta = (distanceY / height.coerceAtLeast(1))
                     listener?.onVolumeDelta(delta)
                 }
                 DragMode.NONE -> {}
