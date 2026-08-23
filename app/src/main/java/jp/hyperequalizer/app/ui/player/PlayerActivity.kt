@@ -399,6 +399,14 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             saveCurrentStateNow()
             deactivateSeparatedPlayback() // 曲/動画が切り替わったら分離再生は一旦解除する
+            // イコライザー画面(EqualizerSheet)は開いた時点のアイテムのURI/audioSessionId・
+            // 分離結果を保持したまま動作しているため、ループ/次へなどで裏側の再生対象が
+            // 切り替わってしまうと、もう再生されていない曲に対して帯域調整や分離を続行
+            // してしまったり、無効になったAudioEffectセッションへ操作を投げて例外に
+            // つながる可能性がある。開いたままにしておく理由が無いため、アイテムが
+            // 切り替わった時点で自動的に閉じ、次に開いたときに新しいアイテムの状態で
+            // 作り直させる。
+            dismissEqualizerSheetIfShowing()
             // 前のアイテムの映像サイズ/変形情報を引きずったまま次のアイテムを表示してしまう
             // (=映像が更新されないまま古い変形だけ残る)ことを避けるため、いったんリセットする。
             // onVideoSizeChangedが呼ばれるまでの間はvideoWidth/Height<=0となり、
@@ -521,7 +529,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         }
         binding.btnEqualizer.setOnClickListener {
             EqualizerSheet.newInstance(currentUri, player.audioSessionId)
-                .show(supportFragmentManager, "equalizer")
+                .show(supportFragmentManager, EQUALIZER_SHEET_TAG)
         }
         binding.btnEdit.setOnClickListener {
             if (currentMediaType == MediaType.VIDEO) {
@@ -854,6 +862,12 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         player.volume = 1f
     }
 
+    /** 再生対象が切り替わった際、開きっぱなしのイコライザー画面があれば閉じる(詳細は[onMediaItemTransition]参照) */
+    private fun dismissEqualizerSheetIfShowing() {
+        val fragment = supportFragmentManager.findFragmentByTag(EQUALIZER_SHEET_TAG) as? EqualizerSheet
+        fragment?.dismissAllowingStateLoss()
+    }
+
     fun currentAudioSessionId(): Int = player.audioSessionId
     fun currentUriString(): String = currentUri
 
@@ -864,6 +878,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         private const val EXTRA_QUEUE_TYPES = "extra_queue_types"
         private const val EXTRA_START_INDEX = "extra_start_index"
         private const val EXTRA_SHUFFLE = "extra_shuffle"
+
+        /** EqualizerSheetをshow()する際のFragmentTag(切り替え時に見つけて閉じるためのキー) */
+        private const val EQUALIZER_SHEET_TAG = "equalizer"
 
         /**
          * queueUris/queueTypesがBinder(IPC)の1トランザクション上限(~1MB)を超える
