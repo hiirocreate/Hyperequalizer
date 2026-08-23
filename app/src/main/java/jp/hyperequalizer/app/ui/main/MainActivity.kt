@@ -7,15 +7,19 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.media3.common.util.UnstableApi
 import com.google.android.material.tabs.TabLayoutMediator
 import jp.hyperequalizer.app.R
 import jp.hyperequalizer.app.databinding.ActivityMainBinding
+import jp.hyperequalizer.app.ui.common.NowPlayingBarController
 import jp.hyperequalizer.app.ui.hidden.HiddenItemsActivity
 import jp.hyperequalizer.app.util.MediaPermissions
 
+@UnstableApi
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private var nowPlayingBar: NowPlayingBarController? = null
 
     private val tabTitles by lazy {
         listOf(
@@ -42,7 +46,20 @@ class MainActivity : AppCompatActivity() {
             tab.text = tabTitles[position]
         }.attach()
 
+        nowPlayingBar = NowPlayingBarController(
+            activity = this,
+            barRoot = binding.nowPlayingBar.root,
+            icon = binding.nowPlayingBar.nowPlayingIcon,
+            title = binding.nowPlayingBar.nowPlayingTitle,
+            playPauseButton = binding.nowPlayingBar.nowPlayingPlayPause
+        ).also { it.start() }
+
         ensurePermissions()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        nowPlayingBar?.stop()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

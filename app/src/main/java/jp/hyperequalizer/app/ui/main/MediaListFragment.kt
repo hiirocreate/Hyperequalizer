@@ -10,7 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import jp.hyperequalizer.app.HyperEqApp
 import jp.hyperequalizer.app.R
@@ -21,6 +23,7 @@ import jp.hyperequalizer.app.data.PlaylistRepository
 import jp.hyperequalizer.app.databinding.FragmentMediaListBinding
 import jp.hyperequalizer.app.library.MediaFile
 import jp.hyperequalizer.app.library.MediaLibraryScanner
+import jp.hyperequalizer.app.playback.NowPlayingState
 import jp.hyperequalizer.app.ui.common.AudioExtractDialogHelper
 import jp.hyperequalizer.app.ui.common.MediaFileAdapter
 import jp.hyperequalizer.app.ui.common.MediaFolderAdapter
@@ -101,8 +104,20 @@ class MediaListFragment : Fragment() {
         binding.btnViewFolder.setOnClickListener { setViewMode(ViewMode.FOLDER) }
         setViewMode(ViewMode.LIST)
         setupSelectionBar()
+        observeNowPlaying()
 
         reload()
+    }
+
+    /** 再生中のコンテンツが変わるたびに一覧内の該当アイテムをハイライトする */
+    private fun observeNowPlaying() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                NowPlayingState.current.collect { info ->
+                    adapter.setCurrentPlayingUri(info?.uri)
+                }
+            }
+        }
     }
 
     /** まとめて選択した項目に対する一括操作(お気に入り/プレイリスト追加/非表示/削除)のバーを設定する */
