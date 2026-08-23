@@ -5,4 +5,8 @@
         android:id="@+id/action_manage_hidden"
         android:title="@string/action_manage_hidden"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_view_crash_log"
+        android:title="@string/action_view_crash_log"
+        app:showAsAction="never" />
 </menu>
