@@ -230,7 +230,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             .setMediaId(uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
-                    .setTitle(displayNameOf(uri))
+                    .setTitle(displayNameFallback(uri))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setExtras(extras)
@@ -275,12 +275,38 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
      * MediaStoreのcontent:// URIは [Uri.lastPathSegment] だと数値の行IDしか取れず
      * ファイル名として表示できないため、[MediaDisplayNameResolver] で実際の表示名を解決する。
      * 同期的に取得できるキャッシュがあればそれを即返し、無ければひとまずURIの末尾
-     * (フォールバック)を返しつつ、非同期で正しい名前を取得してタイトルを更新する。
+     * (フォールバック)を返しつつ、非同期で正しい名前を取得してタイトルを更新する
+     * ([updateMediaItemTitle]経由で[Player.replaceMediaItem]を呼び出す=副作用あり)。
+     *
+     * この副作用のある解決は「今まさに表示/再生中の1件」に対してのみ行うこと
+     * ([applyForIndex]・お気に入りボタンなど)。キュー構築時に一覧の全件分を
+     * まとめて呼び出すと、非同期解決が完了するたびに [Player.replaceMediaItem] が
+     * ほぼ同時多発的にメインスレッドへ飛び、ExoPlayerの内部状態を乱して
+     * 「映像だけ表示されなくなる」「画面全体が操作不能になる(ANR)」といった
+     * 不具合につながることが分かったため、キュー構築(複数件を一度に処理する場面)
+     * では代わりに副作用の無い [displayNameFallback] を使う。
      */
     private fun displayNameOf(uriString: String): String {
         val cached = MediaDisplayNameResolver.peek(uriString)
         if (cached != null) return cached
         resolveDisplayNameAsync(uriString)
+        return try {
+            Uri.parse(uriString).lastPathSegment ?: uriString
+        } catch (e: Exception) {
+            uriString
+        }
+    }
+
+    /**
+     * [displayNameOf] と異なり、非同期解決やExoPlayerへの [Player.replaceMediaItem] 呼び出しを
+     * 一切トリガーしない、副作用の無いバージョン。複数アイテムをまとめて構築する
+     * [buildMediaItem] (=[buildMediaQueueAndPrepare] から一覧の全件に対して呼ばれる)専用。
+     * キャッシュ済みの表示名があればそれを使い、無ければURIの末尾を暫定表示名として使う
+     * (実際に再生され[applyForIndex]が呼ばれた時点で改めて正しい名前が解決される)。
+     */
+    private fun displayNameFallback(uriString: String): String {
+        val cached = MediaDisplayNameResolver.peek(uriString)
+        if (cached != null) return cached
         return try {
             Uri.parse(uriString).lastPathSegment ?: uriString
         } catch (e: Exception) {
