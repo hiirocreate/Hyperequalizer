@@ -297,10 +297,30 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         }
     }
 
-    /** 非同期解決が終わった時点でまだ同じアイテムを表示中であればタイトルを更新する */
+    /**
+     * 非同期解決が終わった時点でまだ同じアイテムを表示中であれば画面上のタイトルを更新する。
+     *
+     * これに加えて、実際に再生中のExoPlayerが持つ [MediaItem] のメタデータ自体も
+     * 更新している。システム通知(バックグラウンド再生中の通知)のタイトルは
+     * 画面のTextViewではなく、この MediaItem.mediaMetadata.title から生成されるため、
+     * 画面のテキストだけ直しても通知側はいつまでもMediaStoreの数値ID
+     * (Uri.lastPathSegmentによるフォールバック値)のまま表示され続けてしまう。
+     * [Player.replaceMediaItem] は再生位置・再生状態を保ったままメタデータだけを
+     * 差し替えられるため、再生を中断せずに通知のタイトルも直せる。
+     */
     private fun updateMediaItemTitle(uriString: String, resolvedName: String) {
         if (uriString == currentUri) {
             binding.titleText.text = resolvedName
+        }
+        if (!playerReady) return
+        for (i in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(i)
+            if (item.localConfiguration?.uri?.toString() != uriString) continue
+            if (item.mediaMetadata.title?.toString() == resolvedName) break
+            val updatedMetadata = item.mediaMetadata.buildUpon().setTitle(resolvedName).build()
+            val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
+            player.replaceMediaItem(i, updatedItem)
+            break
         }
     }
 
