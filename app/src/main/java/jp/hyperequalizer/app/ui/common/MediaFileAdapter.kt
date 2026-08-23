@@ -34,7 +34,26 @@ class MediaFileAdapter(
     private var selectionMode = false
     private val selectedKeys = mutableSetOf<String>()
 
+    /** 現在再生中のアイテムのURI(未再生ならnull)。一覧内のハイライト表示に使う。 */
+    private var currentPlayingUri: String? = null
+
     private fun keyOf(item: UiMediaItem): String = "${item.uri}|${item.playlistItemId}"
+
+    /**
+     * 再生中のURIをセットし、一覧内のハイライト表示を更新する。
+     * 旧・新の再生中アイテムだけを再描画すればよいため、リスト全体の再スキャンは不要。
+     */
+    fun setCurrentPlayingUri(uri: String?) {
+        if (uri == currentPlayingUri) return
+        val previousUri = currentPlayingUri
+        currentPlayingUri = uri
+        currentList.forEachIndexed { index, item ->
+            val itemUri = item.uri.toString()
+            if (itemUri == previousUri || itemUri == uri) {
+                notifyItemChanged(index)
+            }
+        }
+    }
 
     fun isSelectionMode(): Boolean = selectionMode
 
@@ -99,6 +118,15 @@ class MediaFileAdapter(
             binding.selectionCheckbox.visibility = if (selectionMode) View.VISIBLE else View.GONE
             binding.selectionCheckbox.isChecked = selected
             binding.menuButton.visibility = if (selectionMode) View.GONE else View.VISIBLE
+
+            val isPlaying = item.uri.toString() == currentPlayingUri
+            binding.nowPlayingIndicator.visibility = if (isPlaying) View.VISIBLE else View.GONE
+            binding.title.setTextColor(
+                ContextCompat.getColor(
+                    binding.root.context,
+                    if (isPlaying) R.color.hyper_accent else R.color.hyper_on_surface
+                )
+            )
 
             binding.root.setOnClickListener {
                 if (selectionMode) toggleSelection(item) else onClick(item)
