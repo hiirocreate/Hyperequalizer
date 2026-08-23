@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ハイパーイコライザー</string>
-    <string name="percent_format">%1$d%%</string>
 
     <string name="tab_videos">動画</string>
     <string name="tab_music">音楽</string>
@@ -50,24 +49,28 @@
     <string name="loop_type_ab_short">AB</string>
 
     <string name="speed_label">再生速度 %1$.2fx</string>
-    <string name="playback_error_format">再生エラー: %1$s</string>
+
+    <string name="percent_format">%1$d%%</string>
 
     <string name="eq_title">イコライザー</string>
-    <string name="eq_enable">イコライザーを有効にする</string>
     <string name="eq_reset">リセット</string>
-    <string name="eq_bands_hint">各帯域を上げるとその音域が強調され、下げると抑えられます(0dBが基準)</string>
+    <string name="eq_enable">イコライザーを有効にする</string>
+    <string name="eq_bands_hint">各帯域のスライダーを上下させて音質を調整できます。右の数値はdB(デシベル)です。</string>
     <string name="eq_preset">プリセット</string>
-    <string name="eq_separation_title">ボーカル / 伴奏 個別音量</string>
-    <string name="eq_separation_explainer">曲を「ボーカル」と「伴奏(楽器)」に分けて、それぞれの音量を別々に調整できます(カラオケ的な使い方も可能)</string>
     <string name="eq_vocal_volume">ボーカル音量</string>
     <string name="eq_instrumental_volume">伴奏(楽器)音量</string>
+    <string name="eq_separation_title">ボーカル / 伴奏 個別音量</string>
+    <string name="eq_separation_explainer">下のボタンで分離処理をすると、ボーカルと伴奏(楽器)の音量を別々に調整できるようになります。</string>
     <string name="eq_separate_now">この曲/動画をボーカル分離処理する</string>
     <string name="eq_separating">分離処理中… %1$d%%</string>
     <string name="eq_separation_done">分離処理が完了しました</string>
     <string name="eq_separation_fallback">学習済みモデル未配置のため、簡易センターチャンネル抽出モードで動作しています</string>
     <string name="eq_separation_failed">分離処理に失敗しました</string>
+    <string name="eq_separation_timeout">処理がタイムアウトしました(端末の処理能力に対してファイルが大きすぎる可能性があります)</string>
     <string name="eq_separation_none">未処理: 下のボタンでボーカル/伴奏を分離できます</string>
     <string name="eq_bass_boost">重低音強調</string>
+
+    <string name="playback_error_format">再生エラー: %1$s</string>
 
     <string name="editor_title">動画編集</string>
     <string name="editor_trim">トリミング</string>
@@ -102,4 +105,10 @@
 
     <string name="selection_count_format">%1$d件選択中</string>
     <string name="action_remove_from_playlist">プレイリストから削除</string>
+
+    <string name="action_view_crash_log">クラッシュログを確認</string>
+    <string name="crash_log_dialog_title">クラッシュログ</string>
+    <string name="crash_log_copy">コピー</string>
+    <string name="crash_log_copied">クラッシュログをコピーしました</string>
+    <string name="crash_log_none">クラッシュログはありません</string>
 </resources>
