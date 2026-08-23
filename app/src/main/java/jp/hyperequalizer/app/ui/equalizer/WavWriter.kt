@@ -34,18 +34,50 @@ object WavWriter {
         private var dataSize = 0L
         private var closed = false
 
+        // MediaCodecの出力バッファは1回あたり数KB程度しか無いことが多く、以前は
+        // append()のたびに毎回 raf.write() (=OSへのシステムコール)を発行していたため、
+        // 分離処理全体で見ると大量の小さなディスクI/Oが積み重なり、体感で「遅い」と
+        // 感じるレベルの速度低下を招いていた。ここである程度(数百KB単位)まとめてから
+        // まとめて書き出すことでシステムコール回数を大幅に削減する。
+        // また、以前はShortArrayを1要素ずつputShort()していたが、これもバルクコピー
+        // (ShortBuffer.put(shortArray, ...))に置き換えて処理時間を短縮している。
+        private val flushThresholdBytes = 256 * 1024
+        private var pending = ByteArray(flushThresholdBytes + 16 * 1024)
+        private var pendingLen = 0
+
         fun append(pcm: ShortArray, length: Int = pcm.size) {
             if (length <= 0) return
-            val buffer = ByteBuffer.allocate(length * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (i in 0 until length) buffer.putShort(pcm[i])
-            raf.write(buffer.array())
-            dataSize += length * 2L
+            val byteLen = length * 2
+            if (byteLen > pending.size) {
+                // 想定より大きなチャンクが来た場合は、それが収まるようバッファを拡張する
+                pending = pending.copyOf(byteLen + flushThresholdBytes)
+            }
+            if (pendingLen + byteLen > pending.size) {
+                flushPending()
+            }
+            ByteBuffer.wrap(pending, pendingLen, byteLen)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .asShortBuffer()
+                .put(pcm, 0, length)
+            pendingLen += byteLen
+            dataSize += byteLen.toLong()
+            if (pendingLen >= flushThresholdBytes) {
+                flushPending()
+            }
+        }
+
+        private fun flushPending() {
+            if (pendingLen > 0) {
+                raf.write(pending, 0, pendingLen)
+                pendingLen = 0
+            }
         }
 
         override fun close() {
             if (closed) return
             closed = true
             try {
+                flushPending()
                 val byteRate = sampleRate * channels * 2
                 val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
                 header.put("RIFF".toByteArray())
