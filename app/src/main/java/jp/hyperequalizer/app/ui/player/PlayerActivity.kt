@@ -307,19 +307,28 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
      * (Uri.lastPathSegmentによるフォールバック値)のまま表示され続けてしまう。
      * [Player.replaceMediaItem] は再生位置・再生状態を保ったままメタデータだけを
      * 差し替えられるため、再生を中断せずに通知のタイトルも直せる。
+     *
+     * COMMAND_CHANGE_MEDIA_ITEMSが利用できない(=呼び出せない)状態や、
+     * 端末・タイミングによっては例外を投げる場合があるため、失敗しても再生自体を
+     * 巻き込んでクラッシュさせないよう防御的に呼び出す。
      */
     private fun updateMediaItemTitle(uriString: String, resolvedName: String) {
         if (uriString == currentUri) {
             binding.titleText.text = resolvedName
         }
         if (!playerReady) return
+        if (!player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return
         for (i in 0 until player.mediaItemCount) {
             val item = player.getMediaItemAt(i)
             if (item.localConfiguration?.uri?.toString() != uriString) continue
             if (item.mediaMetadata.title?.toString() == resolvedName) break
-            val updatedMetadata = item.mediaMetadata.buildUpon().setTitle(resolvedName).build()
-            val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
-            player.replaceMediaItem(i, updatedItem)
+            try {
+                val updatedMetadata = item.mediaMetadata.buildUpon().setTitle(resolvedName).build()
+                val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
+                player.replaceMediaItem(i, updatedItem)
+            } catch (e: Exception) {
+                // 通知タイトルの更新に失敗しても、再生そのものは継続させる(致命的ではないため)
+            }
             break
         }
     }
