@@ -45,24 +45,30 @@ object WavWriter {
         override fun close() {
             if (closed) return
             closed = true
-            val byteRate = sampleRate * channels * 2
-            val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-            header.put("RIFF".toByteArray())
-            header.putInt((36 + dataSize).toInt())
-            header.put("WAVE".toByteArray())
-            header.put("fmt ".toByteArray())
-            header.putInt(16) // PCM chunk size
-            header.putShort(1) // PCM format
-            header.putShort(channels.toShort())
-            header.putInt(sampleRate)
-            header.putInt(byteRate)
-            header.putShort((channels * 2).toShort()) // block align
-            header.putShort(16) // bits per sample
-            header.put("data".toByteArray())
-            header.putInt(dataSize.toInt())
-            raf.seek(0)
-            raf.write(header.array())
-            raf.close()
+            try {
+                val byteRate = sampleRate * channels * 2
+                val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+                header.put("RIFF".toByteArray())
+                header.putInt((36 + dataSize).toInt())
+                header.put("WAVE".toByteArray())
+                header.put("fmt ".toByteArray())
+                header.putInt(16) // PCM chunk size
+                header.putShort(1) // PCM format
+                header.putShort(channels.toShort())
+                header.putInt(sampleRate)
+                header.putInt(byteRate)
+                header.putShort((channels * 2).toShort()) // block align
+                header.putShort(16) // bits per sample
+                header.put("data".toByteArray())
+                header.putInt(dataSize.toInt())
+                raf.seek(0)
+                raf.write(header.array())
+            } finally {
+                // ヘッダー書き込みが失敗しても、開いたファイルハンドルは必ず閉じる
+                // (ここで閉じ漏れると、繰り返し試したときにファイルディスクリプタを
+                // 使い果たしてクラッシュする原因になり得る)
+                raf.close()
+            }
         }
     }
 }

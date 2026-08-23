@@ -164,6 +164,10 @@ class SeparationEngine(private val context: Context) {
             SeparationResult(vocalFile.absolutePath, instrumentalFile.absolutePath, usedAiModel = true)
         } catch (e: Exception) {
             null
+        } catch (e: OutOfMemoryError) {
+            // AIモデル経路は音声全体を一括でメモリに載せるため、大きなファイルでは
+            // 発生し得る。ここで確実に拾ってフォールバック経路へ切り替えさせる。
+            null
         }
     }
 

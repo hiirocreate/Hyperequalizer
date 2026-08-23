@@ -124,11 +124,20 @@ object AudioDecoder {
         val maxBytes = (maxDurationMs * sampleRate / 1000L * channels * 2L)
         var processedBytes = 0L
 
+        // MediaCodecが入力も出力もまったく進まない(壊れた/対応していないストリームなど)
+        // 状態に陥った場合に無限ループしてしまわないよう、進捗の無いまま繰り返した回数を
+        // 数えておき、一定回数を超えたら諦めて例外を投げる(呼び出し側のタイムアウトより
+        // 手前で、原因を明示した形で早めに失敗させるための保険)。
+        var stalledIterations = 0
+
         try {
             while (!sawOutputEOS && processedBytes < maxBytes) {
+                var progressedThisIteration = false
+
                 if (!sawInputEOS) {
                     val inputIndex = codec.dequeueInputBuffer(10_000)
                     if (inputIndex >= 0) {
+                        progressedThisIteration = true
                         val inputBuffer = codec.getInputBuffer(inputIndex)
                         val sampleSize = if (inputBuffer != null) extractor.readSampleData(inputBuffer, 0) else -1
                         if (sampleSize < 0) {
@@ -144,6 +153,7 @@ object AudioDecoder {
 
                 var outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
                 while (outputIndex >= 0) {
+                    progressedThisIteration = true
                     if (bufferInfo.size > 0) {
                         val outBuffer = codec.getOutputBuffer(outputIndex)
                         if (outBuffer != null) {
@@ -168,6 +178,15 @@ object AudioDecoder {
                     if (processedBytes >= maxBytes) break
                     outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
                 }
+
+                if (progressedThisIteration) {
+                    stalledIterations = 0
+                } else {
+                    stalledIterations++
+                    if (stalledIterations > MAX_STALLED_ITERATIONS) {
+                        throw IllegalStateException("音声のデコードが進行しませんでした(非対応の形式の可能性があります)")
+                    }
+                }
             }
         } finally {
             codec.stop()
@@ -175,4 +194,8 @@ object AudioDecoder {
             extractor.release()
         }
     }
+
+    // dequeueInputBuffer/dequeueOutputBufferのタイムアウトが10msなので、
+    // 6000回(=約60秒間、入力・出力どちらも一切進まない)で見切りをつける。
+    private const val MAX_STALLED_ITERATIONS = 6000
 }
