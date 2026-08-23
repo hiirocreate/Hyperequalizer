@@ -7,7 +7,10 @@ import android.view.View
 import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import jp.hyperequalizer.app.HyperEqApp
 import jp.hyperequalizer.app.R
@@ -16,7 +19,9 @@ import jp.hyperequalizer.app.data.MediaType
 import jp.hyperequalizer.app.data.PlaylistRepository
 import jp.hyperequalizer.app.databinding.ActivityFolderContentsBinding
 import jp.hyperequalizer.app.library.MediaLibraryScanner
+import jp.hyperequalizer.app.playback.NowPlayingState
 import jp.hyperequalizer.app.ui.common.AudioExtractDialogHelper
+import jp.hyperequalizer.app.ui.common.NowPlayingBarController
 import jp.hyperequalizer.app.ui.common.MediaFileAdapter
 import jp.hyperequalizer.app.ui.common.PlaylistPickerDialog
 import jp.hyperequalizer.app.ui.common.UiMediaItem
@@ -30,6 +35,7 @@ import kotlinx.coroutines.launch
  * 「フォルダ別」一覧からフォルダをタップした際に表示する、
  * そのフォルダ内のファイルだけを絞り込んだ一覧画面。
  */
+@UnstableApi
 class FolderContentsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityFolderContentsBinding
@@ -40,6 +46,7 @@ class FolderContentsActivity : AppCompatActivity() {
     private lateinit var mediaType: MediaType
     private lateinit var folderPath: String
     private var currentItems: List<UiMediaItem> = emptyList()
+    private var nowPlayingBar: NowPlayingBarController? = null
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -78,8 +85,27 @@ class FolderContentsActivity : AppCompatActivity() {
         binding.recyclerView.adapter = adapter
         binding.emptyText.text = getString(if (mediaType == MediaType.VIDEO) R.string.empty_videos else R.string.empty_music)
         setupSelectionBar()
+        observeNowPlaying()
+        nowPlayingBar = NowPlayingBarController(
+            activity = this,
+            barRoot = binding.nowPlayingBar.root,
+            icon = binding.nowPlayingBar.nowPlayingIcon,
+            title = binding.nowPlayingBar.nowPlayingTitle,
+            playPauseButton = binding.nowPlayingBar.nowPlayingPlayPause
+        ).also { it.start() }
 
         reload()
+    }
+
+    /** 再生中のコンテンツが変わるたびに一覧内の該当アイテムをハイライトする */
+    private fun observeNowPlaying() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                NowPlayingState.current.collect { info ->
+                    adapter.setCurrentPlayingUri(info?.uri)
+                }
+            }
+        }
     }
 
     /** まとめて選択した項目に対する一括操作(お気に入り/プレイリスト追加/非表示/削除)のバーを設定する */
@@ -146,6 +172,11 @@ class FolderContentsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reload()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        nowPlayingBar?.stop()
     }
 
     private fun reload() {
