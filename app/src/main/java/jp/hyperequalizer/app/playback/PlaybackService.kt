@@ -88,6 +88,7 @@ class PlaybackService : MediaSessionService() {
         // これを呼ばないと通知(バックグラウンド再生の操作・フォアグラウンド化)が
         // 一切表示されないため、ここで明示的に登録する。
         addSession(session)
+
         registerNowPlayingPublisher(exoPlayer)
 
         exoPlayer.addListener(object : Player.Listener {
@@ -104,6 +105,80 @@ class PlaybackService : MediaSessionService() {
                 delay(200)
             }
         }
+    }
+
+    /**
+     * ExoPlayerを構築する。通常の [ExoPlayer.Builder(Context)] ではなく、
+     * 以下2点をカスタマイズしたものを使う。
+     *
+     * 1. AAC(ADTS)/MP3のような、ファイル自体に長さの情報を持たない生の音声形式は、
+     *    標準の抽出器のままだと再生時間(duration)を取得できず、シークバーが
+     *    00:00のまま動かせなくなることがある(再生自体はできるため気づきにくい)。
+     *    FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS を指定すると、平均ビットレート
+     *    からおおよその長さ・シーク位置を推定できるようになる。
+     * 2. 「映像が流れずシークバーも操作できずファイル名も表示されないが、
+     *    音声のみ再生される」という報告があった。特定の動画コーデックで優先の
+     *    ハードウェアデコーダーの初期化が失敗しているケースを疑い、
+     *    setEnableDecoderFallback(true) を指定して、その場合に別のデコーダーへ
+     *    自動的にフォールバックするようにした(根本原因を断定できていないため
+     *    あくまで保険的な対応)。
+     */
+    private fun buildExoPlayer(): ExoPlayer {
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setAdtsExtractorFlags(AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
+            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
+        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+        return ExoPlayer.Builder(this, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+    }
+
+    /**
+     * ExoPlayerの再生状態(現在のメディアアイテム・再生中かどうか)が変わるたびに
+     * [NowPlayingState] を更新する。メイン画面やフォルダ画面の「再生中インジケーター」
+     * 表示・ハイライトはこれを購読して行う。
+     *
+     * 表示名はここで改めてMediaStoreへ問い合わせたりはせず、PlayerActivity側で既に
+     * 解決済みのMediaItem.mediaMetadata.titleをそのまま使う(再解決による二重処理を避けるため)。
+     */
+    private fun registerNowPlayingPublisher(exoPlayer: ExoPlayer) {
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                publishNowPlaying(exoPlayer)
+            }
+
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                publishNowPlaying(exoPlayer)
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                publishNowPlaying(exoPlayer)
+            }
+        })
+        publishNowPlaying(exoPlayer)
+    }
+
+    private fun publishNowPlaying(exoPlayer: ExoPlayer) {
+        val item = exoPlayer.currentMediaItem
+        if (item == null) {
+            NowPlayingState.clear()
+            return
+        }
+        val uri = item.localConfiguration?.uri?.toString()
+        if (uri == null) {
+            NowPlayingState.clear()
+            return
+        }
+        val name = item.mediaMetadata.title?.toString() ?: uri
+        val mediaTypeName = item.mediaMetadata.extras?.getString(MediaItemKeys.EXTRA_MEDIA_ITEM_TYPE)
+        val mediaType = try {
+            MediaType.valueOf(mediaTypeName ?: MediaType.VIDEO.name)
+        } catch (e: Exception) {
+            MediaType.VIDEO
+        }
+        NowPlayingState.update(NowPlayingInfo(uri, name, mediaType, exoPlayer.isPlaying))
     }
 
     /** 現在再生中のメディアのURIに合わせて、そのファイルのループ設定(常時メモリ機能)を購読し直す */
@@ -132,48 +207,6 @@ class PlaybackService : MediaSessionService() {
                 p.seekTo(cachedLoopStartMs)
             }
         }
-    }
-
-    /**
-     * 一覧画面・フォルダ内一覧・メイン画面下部のショートカットバーが「今何が
-     * 再生されているか」を軽量に参照できるよう、再生アイテムの切り替わり・
-     * タイトル確定(通知タイトルの数字→実ファイル名解決を含む)・再生/一時停止の
-     * 切り替わりのたびに[NowPlayingState]を更新する。
-     */
-    private fun registerNowPlayingPublisher(exoPlayer: ExoPlayer) {
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                publishNowPlaying(exoPlayer)
-            }
-
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-                // PlayerActivity側でファイル名解決が完了しタイトルが更新された際にも
-                // ここで拾って、一覧側の表示にも実ファイル名が反映されるようにする。
-                publishNowPlaying(exoPlayer)
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                publishNowPlaying(exoPlayer)
-            }
-        })
-        publishNowPlaying(exoPlayer)
-    }
-
-    private fun publishNowPlaying(exoPlayer: ExoPlayer) {
-        val item = exoPlayer.currentMediaItem
-        val uri = item?.localConfiguration?.uri?.toString()
-        if (item == null || uri == null) {
-            NowPlayingState.clear()
-            return
-        }
-        val mediaTypeName = item.mediaMetadata.extras?.getString(MediaItemKeys.EXTRA_MEDIA_ITEM_TYPE)
-        val mediaType = try {
-            MediaType.valueOf(mediaTypeName ?: MediaType.VIDEO.name)
-        } catch (e: Exception) {
-            MediaType.VIDEO
-        }
-        val name = item.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() } ?: uri
-        NowPlayingState.update(NowPlayingInfo(uri, name, mediaType, exoPlayer.isPlaying))
     }
 
     /**
@@ -288,38 +321,6 @@ class PlaybackService : MediaSessionService() {
             addSession(session)
             registerNowPlayingPublisher(it)
         }
-
-    /**
-     * ExoPlayerインスタンスを構築する。2つの再生品質対策をここで行っている。
-     *
-     * (1) 拡張子.aac(生のADTS AACストリーム)や.mp3のようにコンテナ自体に総再生時間の
-     *     情報を持たないファイルは、標準構成のままだと内部のAdtsExtractor/Mp3Extractorが
-     *     総再生時間を算出できず、player.duration が C.TIME_UNSET(=画面には00:00)の
-     *     ままとなり、シークバーも機能しない状態になっていた(再生自体は可能なため
-     *     気づきにくい)。FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS を指定すると、
-     *     ファイル全体を平均ビットレートとみなして総再生時間・シーク位置を推定する
-     *     ようになる。
-     *
-     * (2) 一部の動画ファイルで「音声だけ再生されて映像が出ない(シークバーも
-     *     効かない)」という報告があった。考えられる原因の一つは、その動画の
-     *     映像コーデック(プロファイル)がこの端末のハードウェアデコーダーと
-     *     相性が悪く、優先デコーダーの初期化に失敗しているケース。
-     *     setEnableDecoderFallback(true) を指定すると、優先デコーダーの初期化に
-     *     失敗した場合に他の(ソフトウェアデコーダーなどの)代替デコーダーへ
-     *     自動的にフォールバックするようになるため、こうした端末依存の再生不可を
-     *     回避できる可能性がある。
-     */
-    private fun buildExoPlayer(): ExoPlayer {
-        val extractorsFactory = DefaultExtractorsFactory()
-            .setAdtsExtractorFlags(AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
-            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING_ALWAYS)
-        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
-        val renderersFactory = DefaultRenderersFactory(this)
-            .setEnableDecoderFallback(true)
-        return ExoPlayer.Builder(this, renderersFactory)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .build()
-    }
 
     companion object {
         const val ACTION_LOCAL_BIND = "jp.hyperequalizer.app.action.LOCAL_BIND"
