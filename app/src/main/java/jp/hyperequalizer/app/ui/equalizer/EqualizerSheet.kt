@@ -124,7 +124,15 @@ class EqualizerSheet : BottomSheetDialogFragment() {
                 itemBinding.bandValueLabel.text = formatDb(initialLevel)
                 itemBinding.bandSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
                     val level = (it + range[0]).toShort()
-                    eq.setBandLevel(bandShort, level)
+                    // 再生中のアイテムが切り替わるとPlayerActivity側でこの画面を自動的に
+                    // 閉じるようにしたが、念のための二重の防御として、既に無効になった
+                    // AudioEffectセッションへ操作してしまっても(IllegalStateException等)
+                    // アプリ全体を巻き込んでクラッシュさせないようにしておく。
+                    try {
+                        eq.setBandLevel(bandShort, level)
+                    } catch (e: Exception) {
+                        return@simpleSeekListener
+                    }
                     itemBinding.bandValueLabel.text = formatDb(level)
                     persistEqSoon()
                 })
@@ -139,7 +147,11 @@ class EqualizerSheet : BottomSheetDialogFragment() {
             bassBoost = bb
             if (bb.strengthSupported) {
                 binding.bassBoostSeekBar.setOnSeekBarChangeListener(simpleSeekListener {
-                    bb.setStrength(it.toShort())
+                    try {
+                        bb.setStrength(it.toShort())
+                    } catch (e: Exception) {
+                        return@simpleSeekListener
+                    }
                     binding.bassBoostValueLabel.text = getString(R.string.percent_format, it * 100 / 1000)
                     persistEqSoon()
                 })
@@ -153,17 +165,33 @@ class EqualizerSheet : BottomSheetDialogFragment() {
 
         lifecycleScope.launch {
             val state = repo.getState(currentUri)
+            // DB読み込み待ちの間に画面が閉じられている(_binding == null)可能性があるため、
+            // ここから先でbinding/AudioEffectへ触る前に必ず確認する。
+            if (_binding == null) return@launch
             binding.eqEnableSwitch.isChecked = state.eqEnabled
-            equalizer?.enabled = state.eqEnabled
-            bassBoost?.enabled = state.eqEnabled
+            try {
+                equalizer?.enabled = state.eqEnabled
+                bassBoost?.enabled = state.eqEnabled
+            } catch (e: Exception) {
+                // AudioEffectのセッションが既に無効になっている場合。再生自体は継続させる。
+            }
             binding.bassBoostSeekBar.progress = state.bassBoostStrength
             binding.bassBoostValueLabel.text = getString(R.string.percent_format, state.bassBoostStrength * 100 / 1000)
-            bassBoost?.let { if (it.strengthSupported) it.setStrength(state.bassBoostStrength.toShort()) }
+            try {
+                bassBoost?.let { if (it.strengthSupported) it.setStrength(state.bassBoostStrength.toShort()) }
+            } catch (e: Exception) {
+                // 同上
+            }
             state.eqBandLevelsCsv?.split(",")?.forEachIndexed { index, v ->
                 val level = v.toShortOrNull() ?: return@forEachIndexed
+                if (_binding == null) return@forEachIndexed
                 equalizer?.let { eq ->
                     if (index < eq.numberOfBands) {
-                        eq.setBandLevel(index.toShort(), level)
+                        try {
+                            eq.setBandLevel(index.toShort(), level)
+                        } catch (e: Exception) {
+                            return@let
+                        }
                         val range = eq.bandLevelRange
                         val rowView = binding.bandsContainer.getChildAt(index)
                         rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (level - range[0]).toInt()
@@ -174,8 +202,12 @@ class EqualizerSheet : BottomSheetDialogFragment() {
         }
 
         binding.eqEnableSwitch.setOnCheckedChangeListener { _, checked ->
-            equalizer?.enabled = checked
-            bassBoost?.enabled = checked
+            try {
+                equalizer?.enabled = checked
+                bassBoost?.enabled = checked
+            } catch (e: Exception) {
+                // AudioEffectのセッションが既に無効になっている場合。再生自体は継続させる。
+            }
             persistEqSoon()
         }
     }
@@ -187,22 +219,26 @@ class EqualizerSheet : BottomSheetDialogFragment() {
 
     /** 全帯域・重低音強調を0にリセットする(直感的に「元に戻す」操作ができるように) */
     private fun resetEq() {
-        val eq = equalizer
-        if (eq != null) {
-            val range = eq.bandLevelRange
-            for (band in 0 until eq.numberOfBands) {
-                eq.setBandLevel(band.toShort(), 0)
-                val rowView = binding.bandsContainer.getChildAt(band)
-                rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (0 - range[0]).toInt()
-                rowView?.findViewById<TextView>(R.id.bandValueLabel)?.text = formatDb(0)
+        try {
+            val eq = equalizer
+            if (eq != null) {
+                val range = eq.bandLevelRange
+                for (band in 0 until eq.numberOfBands) {
+                    eq.setBandLevel(band.toShort(), 0)
+                    val rowView = binding.bandsContainer.getChildAt(band)
+                    rowView?.findViewById<SeekBar>(R.id.bandSeekBar)?.progress = (0 - range[0]).toInt()
+                    rowView?.findViewById<TextView>(R.id.bandValueLabel)?.text = formatDb(0)
+                }
             }
-        }
-        bassBoost?.let {
-            if (it.strengthSupported) {
-                it.setStrength(0)
-                binding.bassBoostSeekBar.progress = 0
-                binding.bassBoostValueLabel.text = getString(R.string.percent_format, 0)
+            bassBoost?.let {
+                if (it.strengthSupported) {
+                    it.setStrength(0)
+                    binding.bassBoostSeekBar.progress = 0
+                    binding.bassBoostValueLabel.text = getString(R.string.percent_format, 0)
+                }
             }
+        } catch (e: Exception) {
+            // AudioEffectのセッションが既に無効になっている場合。再生自体は継続させる。
         }
         persistEqSoon()
     }
