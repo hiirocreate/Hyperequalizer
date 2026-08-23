@@ -10,16 +10,6 @@
     android:clickable="true"
     android:focusable="true">
 
-    <!-- 現在再生中のコンテンツと同じ行にだけ表示するアクセントバー。
-         一覧やフォルダ内一覧で「今どれが再生されているか」を一目でわかるようにするため。 -->
-    <View
-        android:id="@+id/nowPlayingIndicator"
-        android:layout_width="4dp"
-        android:layout_height="match_parent"
-        android:layout_marginEnd="8dp"
-        android:background="@color/hyper_accent"
-        android:visibility="gone" />
-
     <CheckBox
         android:id="@+id/selectionCheckbox"
         android:layout_width="wrap_content"
@@ -27,6 +17,15 @@
         android:layout_marginEnd="8dp"
         android:clickable="false"
         android:focusable="false"
+        android:visibility="gone" />
+
+    <!-- 現在再生中のアイテムであることを示す色付きの縦バー。通常は非表示。 -->
+    <View
+        android:id="@+id/nowPlayingIndicator"
+        android:layout_width="4dp"
+        android:layout_height="match_parent"
+        android:layout_marginEnd="8dp"
+        android:background="@color/hyper_accent"
         android:visibility="gone" />
 
     <FrameLayout

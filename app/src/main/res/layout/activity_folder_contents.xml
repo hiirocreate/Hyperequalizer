@@ -36,4 +36,8 @@
     <include
         android:id="@+id/selectionBar"
         layout="@layout/selection_action_bar" />
+
+    <include
+        android:id="@+id/nowPlayingBar"
+        layout="@layout/view_now_playing_bar" />
 </LinearLayout>

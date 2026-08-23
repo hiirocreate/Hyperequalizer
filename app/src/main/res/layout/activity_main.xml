@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/hyper_bg">
@@ -34,51 +33,11 @@
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
-    <!-- 「今何が再生されているか」をどのタブを見ていても一目でわかるように、
-         画面下部に常時表示するショートカットバー。タップで再生画面をそのまま開く。
-         何も再生されていない間は非表示(visibility=goneのまま)。 -->
-    <LinearLayout
+    <include
         android:id="@+id/nowPlayingBar"
+        layout="@layout/view_now_playing_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="@color/hyper_surface"
-        android:foreground="?attr/selectableItemBackground"
-        android:elevation="8dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="10dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/nowPlayingIcon"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:src="@drawable/ic_music"
-            app:tint="@color/hyper_accent" />
-
-        <TextView
-            android:id="@+id/nowPlayingTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="12dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/hyper_on_surface"
-            android:textSize="14sp"
-            tools:text="再生中: サンプル曲.mp3" />
-
-        <ImageView
-            android:id="@+id/nowPlayingPlayState"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:layout_marginStart="8dp"
-            android:src="@drawable/ic_play"
-            app:tint="@color/hyper_muted" />
-    </LinearLayout>
+        android:layout_gravity="bottom" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

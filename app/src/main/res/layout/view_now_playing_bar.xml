@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    通知欄の簡易操作バーのような「今何を再生しているか一目で分かり、
+    タップで再生画面へ戻れる」ミニバー。再生画面(PlayerActivity)以外の
+    画面(MainActivity・FolderContentsActivity)に設置する。
+    何も再生されていない間はvisibility=goneのまま。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:layout_gravity="bottom"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@color/hyper_surface"
+    android:elevation="8dp"
+    android:paddingHorizontal="12dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <ImageView
+        android:id="@+id/nowPlayingIcon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:src="@drawable/ic_music"
+        app:tint="@color/hyper_accent" />
+
+    <TextView
+        android:id="@+id/nowPlayingTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/hyper_on_surface"
+        android:textSize="14sp"
+        tools:text="再生中のファイル名.mp3" />
+
+    <ImageButton
+        android:id="@+id/nowPlayingPlayPause"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_pause"
+        app:tint="@color/hyper_on_surface" />
+</LinearLayout>
