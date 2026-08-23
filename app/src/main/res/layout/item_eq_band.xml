@@ -23,8 +23,6 @@
         android:progressTint="@color/hyper_primary"
         android:thumbTint="@color/hyper_primary" />
 
-    <!-- 現在のゲイン値(例: +3dB)。以前はスライダーの位置しか手がかりが無く
-         直感的に分かりにくかったため、実際の数値を常に表示するようにした。 -->
     <TextView
         android:id="@+id/bandValueLabel"
         android:layout_width="44dp"
