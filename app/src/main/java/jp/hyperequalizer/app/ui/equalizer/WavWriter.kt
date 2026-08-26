@@ -25,6 +25,11 @@ object WavWriter {
      *
      * 先頭に仮の44バイトヘッダーを書いてからPCMチャンクを順次追記し、
      * [close](または`use{}`)のタイミングで実際のサイズに基づきヘッダーを書き直す。
+     *
+     * append()のたびに毎回ディスクへ書き込む(=システムコール)のではなく、
+     * ある程度(256KB単位)まとめてから書き出すことで、MediaCodecの出力バッファが
+     * 小さい(数KB程度)場合でもI/O回数を大幅に減らし処理速度を上げている。
+     * また、1サンプルずつコピーする代わりにShortBufferへのバルクコピーを使っている。
      */
     class StreamWriter(outFile: File, private val sampleRate: Int, private val channels: Int) : AutoCloseable {
         private val raf = RandomAccessFile(outFile, "rw").apply {
@@ -34,13 +39,6 @@ object WavWriter {
         private var dataSize = 0L
         private var closed = false
 
-        // MediaCodecの出力バッファは1回あたり数KB程度しか無いことが多く、以前は
-        // append()のたびに毎回 raf.write() (=OSへのシステムコール)を発行していたため、
-        // 分離処理全体で見ると大量の小さなディスクI/Oが積み重なり、体感で「遅い」と
-        // 感じるレベルの速度低下を招いていた。ここである程度(数百KB単位)まとめてから
-        // まとめて書き出すことでシステムコール回数を大幅に削減する。
-        // また、以前はShortArrayを1要素ずつputShort()していたが、これもバルクコピー
-        // (ShortBuffer.put(shortArray, ...))に置き換えて処理時間を短縮している。
         private val flushThresholdBytes = 256 * 1024
         private var pending = ByteArray(flushThresholdBytes + 16 * 1024)
         private var pendingLen = 0
