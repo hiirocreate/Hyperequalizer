@@ -879,9 +879,6 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         private const val EXTRA_START_INDEX = "extra_start_index"
         private const val EXTRA_SHUFFLE = "extra_shuffle"
 
-        /** EqualizerSheetをshow()する際のFragmentTag(切り替え時に見つけて閉じるためのキー) */
-        private const val EQUALIZER_SHEET_TAG = "equalizer"
-
         /**
          * queueUris/queueTypesがBinder(IPC)の1トランザクション上限(~1MB)を超える
          * サイズになり得るため、Intent extrasには載せず [PendingPlaybackQueue] へ
@@ -891,6 +888,9 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
 
         /** MediaItemのメタデータ(extras)に種別(動画/音楽)を埋め込むためのキー */
         private const val EXTRA_MEDIA_ITEM_TYPE = MediaItemKeys.EXTRA_MEDIA_ITEM_TYPE
+
+        /** EqualizerSheetをshow()する際のFragmentTag(切り替え時に見つけて閉じるためのキー) */
+        private const val EQUALIZER_SHEET_TAG = "equalizer"
 
         fun newIntent(context: Context, uri: Uri, mediaType: MediaType): Intent =
             Intent(context, PlayerActivity::class.java)
