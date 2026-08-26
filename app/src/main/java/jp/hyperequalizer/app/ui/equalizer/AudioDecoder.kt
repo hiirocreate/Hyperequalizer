@@ -47,7 +47,7 @@ object AudioDecoder {
             sampleRate = format.sampleRate
             channels = format.channels
             val buffer = ByteBuffer.allocate(length * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (i in 0 until length) buffer.putShort(chunk[i])
+            buffer.asShortBuffer().put(chunk, 0, length)
             output.write(buffer.array())
         }
         val bytes = output.toByteArray()
