@@ -11,6 +11,8 @@ import java.io.File
 import java.io.FileInputStream
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.min
 
@@ -29,10 +31,16 @@ data class SeparationResult(val vocalPath: String, val instrumentalPath: String,
  *    完璧な分離ではないが、追加ファイル無しでその場で動作する。
  *
  * (2)のフォールバック処理が実際にはほぼ常に使われるルートであるため、
- * こちらは「デコード→分離→WAV書き込み」をチャンク単位でパイプライン処理し、
- * ファイル全体を一度にメモリへ載せないようにしてある。以前は数分の音声でも
- * 数百MB規模のメモリを一時的に確保しており、低メモリ端末で極端に遅くなったり
- * (体感で「処理が全然進まない」ように見える)、メモリ不足の一因になっていた。
+ * こちらは「デコード→分離→WAV書き込み」をパイプライン化して高速化してある。
+ * - チャンク単位で処理するため、ファイル全体を一度にメモリへ載せない
+ *   (以前は数分の音声でも数百MB規模のメモリを一時的に確保していた)。
+ * - デコード/ミッドサイド分離(CPU側の処理)とディスクへのWAV書き込み(I/O待ちが
+ *   発生し得る処理)を別スレッドで並行して行う(生産者/消費者パターン)。
+ *   以前は「1チャンクをデコード→分離→書き込みが終わるまで次のチャンクを
+ *   デコードしない」という完全な直列処理だったため、ディスクI/Oの待ち時間が
+ *   そのまま分離処理全体の所要時間に上乗せされていた。書き込み専用スレッドを
+ *   分離することで、書き込み待ちの間にも次のチャンクのデコード・分離を
+ *   進められるようになり、体感速度が大きく改善する。
  *
  * @throws IllegalStateException 読み込み/デコードできなかった理由付き(失敗画面に表示するため)
  */
@@ -61,10 +69,14 @@ class SeparationEngine(private val context: Context) {
         mainHandler.post { onProgress(p) }
     }
 
+    /** デコード/分離スレッドから書き込みスレッドへ渡す1チャンク分のデータ */
+    private class WriteJob(val vocal: ShortArray, val vocalLen: Int, val instrumental: ShortArray, val instLen: Int)
+
     /**
      * 通常ケース(AIモデル未配置、またはAI推論失敗時)のフォールバック処理。
      * [AudioDecoder.decodeStreaming] でチャンクを受け取るたびにその場で
-     * ミッドサイド分離し、[WavWriter.StreamWriter] で都度ファイルへ追記する。
+     * ミッドサイド分離し、専用の書き込みスレッドへ渡して [WavWriter.StreamWriter] で
+     * 都度ファイルへ追記する(デコード/分離とディスク書き込みを並行実行するため)。
      */
     private fun separateCenterChannelStreaming(uri: Uri, onProgress: (Int) -> Unit): SeparationResult {
         val outDir = File(context.cacheDir, "separated/${uri.toString().hashCode()}")
@@ -72,7 +84,34 @@ class SeparationEngine(private val context: Context) {
         val vocalFile = File(outDir, "vocal.wav")
         val instrumentalFile = File(outDir, "instrumental.wav")
 
+        // 書き込みスレッドがディスクI/O待ちで詰まった場合に、デコード側が無制限に
+        // メモリを積み上げてしまわないよう、キューの容量には上限を設けてある
+        // (満杯になるとput()側がブロックし、自然にデコード側の速度も抑えられる)。
+        val queue = ArrayBlockingQueue<WriteJob>(WRITE_QUEUE_CAPACITY)
+        val poisonPill = WriteJob(ShortArray(0), 0, ShortArray(0), 0)
+        val writerError = AtomicReference<Throwable?>(null)
         var writers: Pair<WavWriter.StreamWriter, WavWriter.StreamWriter>? = null
+        var didStartWriterThread = false
+
+        val writerThread = Thread({
+            try {
+                while (true) {
+                    val job = queue.take()
+                    if (job === poisonPill) break
+                    // writerThread.start()は必ずwriters代入後に呼ばれ、JMM上
+                    // Thread.start()より前の書き込みは開始したスレッドから見えることが
+                    // 保証されるため、ここで非nullであることは保証されている。
+                    val (vocalWriter, instrumentalWriter) = writers!!
+                    vocalWriter.append(job.vocal, job.vocalLen)
+                    instrumentalWriter.append(job.instrumental, job.instLen)
+                }
+            } catch (e: InterruptedException) {
+                // close()側からの後始末目的の割り込みは正常系として無視する
+            } catch (e: Throwable) {
+                writerError.set(e)
+            }
+        }, "SeparationWriter")
+
         var lastReported = -1
 
         try {
@@ -88,17 +127,36 @@ class SeparationEngine(private val context: Context) {
                     }
                 }
             ) { chunk, length, format ->
-                val (vocalWriter, instrumentalWriter) = writers ?: (
-                    WavWriter.StreamWriter(vocalFile, format.sampleRate, format.channels) to
+                if (writers == null) {
+                    writers = WavWriter.StreamWriter(vocalFile, format.sampleRate, format.channels) to
                         WavWriter.StreamWriter(instrumentalFile, format.sampleRate, format.channels)
-                    ).also { writers = it }
+                    writerThread.start()
+                    didStartWriterThread = true
+                }
+                writerError.get()?.let { throw it }
                 val (vocalChunk, instrumentalChunk) = centerChannelSeparateChunk(chunk, length, format.channels)
-                vocalWriter.append(vocalChunk)
-                instrumentalWriter.append(instrumentalChunk)
+                queue.put(WriteJob(vocalChunk, length, instrumentalChunk, length))
             }
         } finally {
-            writers?.let { (v, i) -> v.close(); i.close() }
+            // ここでの後始末そのものが例外を投げてしまうと、デコード側で発生した
+            // 本来の(原因が分かる)例外を握りつぶして上書きしてしまうため、
+            // 後始末中の例外はすべて無視して元の例外を優先させる。
+            try {
+                if (didStartWriterThread) {
+                    queue.put(poisonPill)
+                    writerThread.join()
+                }
+            } catch (e: Throwable) {
+                // 無視(元の例外を優先)
+            }
+            try {
+                writers?.let { (v, i) -> v.close(); i.close() }
+            } catch (e: Throwable) {
+                // 無視(元の例外を優先)
+            }
         }
+
+        writerError.get()?.let { throw it }
 
         if (writers == null) {
             // 音声データが1バイトも得られなかった(空ファイル/極端に短いファイルなど)
@@ -258,5 +316,8 @@ class SeparationEngine(private val context: Context) {
 
     companion object {
         private const val MODEL_ASSET_NAME = "vocal_separator.tflite"
+
+        /** デコード/分離スレッドが書き込みスレッドをどれだけ先行できるか(チャンク数の上限) */
+        private const val WRITE_QUEUE_CAPACITY = 32
     }
 }
