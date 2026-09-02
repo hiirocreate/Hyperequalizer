@@ -594,6 +594,11 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     }
 
     private fun seekBy(deltaMs: Long) {
+        // ジェスチャー(ダブルタップスキップ)は画面表示直後、PlaybackServiceへの接続
+        // ([onPlayerReady])が完了する前でも操作できてしまうため、その間にタップされると
+        // lateinit player が未初期化のままアクセスされてクラッシュしていた
+        // (UninitializedPropertyAccessException)。準備ができるまでは無視する。
+        if (!playerReady) return
         val target = (player.currentPosition + deltaMs).coerceIn(0, player.duration.coerceAtLeast(0))
         seekMain(target)
         showSkipFlash(deltaMs > 0)
@@ -609,11 +614,14 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     }
 
     override fun onScrubStart() {
+        // 同上: player準備完了前のジェスチャー操作を無視してクラッシュを防ぐ
+        if (!playerReady) return
         cancelAutoHide()
         scrubTargetMs = player.currentPosition
     }
 
     override fun onScrubBy(deltaMs: Long) {
+        if (!playerReady) return
         val max = player.duration.coerceAtLeast(0)
         scrubTargetMs = (scrubTargetMs + deltaMs).coerceIn(0, max)
         binding.seekPreviewText.visibility = View.VISIBLE
@@ -621,7 +629,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     }
 
     override fun onScrubEnd() {
-        if (scrubTargetMs >= 0) seekMain(scrubTargetMs)
+        if (playerReady && scrubTargetMs >= 0) seekMain(scrubTargetMs)
         binding.seekPreviewText.visibility = View.GONE
         scrubTargetMs = -1
         scheduleAutoHide()
