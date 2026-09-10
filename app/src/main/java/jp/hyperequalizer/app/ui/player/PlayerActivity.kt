@@ -259,7 +259,18 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         queueTypes = types
     }
 
-    private fun applyForIndex(index: Int) {
+    /**
+     * @param resumeSavedPosition 通常はtrue(前回の再生位置から再開する「常時メモリ機能」)。
+     * 同一アイテムのリピート再生([onMediaItemTransition]の reason が
+     * MEDIA_ITEM_TRANSITION_REASON_REPEAT の場合)ではfalseを渡す。
+     * ExoPlayerは1ループ(REPEAT_MODE_ONE)で末尾まで再生すると自動的に先頭(0)へ
+     * 戻ってから遷移イベントを発火するが、そのタイミングでここが常に「保存された
+     * 最終再生位置」へシークし直すと、直前(末尾到達時点)に保存された位置=曲の
+     * ほぼ終端に逆戻りしてしまい、「最後の一瞬(例: 4:30)を繰り返す」ように見える
+     * 不具合になっていた。同一アイテムのリピートでは位置復元自体が不要
+     * (0から再生を続けるのが正しい)なため、その場合はスキップする。
+     */
+    private fun applyForIndex(index: Int, resumeSavedPosition: Boolean = true) {
         if (index !in queueUris.indices) return
         currentUri = queueUris[index]
         currentMediaType = MediaType.valueOf(queueTypes.getOrElse(index) { MediaType.VIDEO.name })
@@ -268,7 +279,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         binding.titleText.text = displayNameOf(currentUri)
         binding.btnEdit.visibility = if (currentMediaType == MediaType.VIDEO) View.VISIBLE else View.GONE
         binding.btnPopup.visibility = if (currentMediaType == MediaType.VIDEO) View.VISIBLE else View.GONE
-        restoreStateForCurrent()
+        restoreStateForCurrent(resumeSavedPosition)
     }
 
     /**
@@ -359,7 +370,12 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
         }
     }
 
-    private fun restoreStateForCurrent() {
+    /**
+     * @param resumeSavedPosition falseの場合、DBに保存された前回再生位置への
+     * シークだけをスキップする(ループ設定・お気に入り・アスペクト比・速度などの
+     * 状態復元は通常通り行う)。詳細は[applyForIndex]のコメント参照。
+     */
+    private fun restoreStateForCurrent(resumeSavedPosition: Boolean = true) {
         lifecycleScope.launch {
             val state = repo.getState(currentUri)
             loopStartMs = state.loopStartMs
@@ -385,7 +401,7 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             player.playbackParameters = PlaybackParameters(speedSteps[speedIndex])
             updateSpeedChipText()
 
-            if (state.lastPositionMs > 0L) {
+            if (resumeSavedPosition && state.lastPositionMs > 0L) {
                 player.seekTo(state.lastPositionMs)
             }
         }
@@ -412,7 +428,13 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             // onVideoSizeChangedが呼ばれるまでの間はvideoWidth/Height<=0となり、
             // ResizableVideoLayout側の描画変形処理は早期リターンして何もしない状態になる。
             binding.videoLayout.setVideoSize(0, 0)
-            applyForIndex(player.currentMediaItemIndex)
+            // 1ループ(REPEAT_MODE_ONE)で同一アイテムが末尾から先頭へ戻った場合は
+            // reason が MEDIA_ITEM_TRANSITION_REASON_REPEAT になる。この場合、
+            // ExoPlayerは既に位置0から再生を再開しているため、保存された「前回の
+            // 再生位置」(末尾到達直前の値=ほぼ終端)へ戻すシークは行わない
+            // (詳細は[applyForIndex]のコメント参照。行うと最後の一瞬を繰り返すバグになる)。
+            val resumeSavedPosition = reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+            applyForIndex(player.currentMediaItemIndex, resumeSavedPosition)
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
