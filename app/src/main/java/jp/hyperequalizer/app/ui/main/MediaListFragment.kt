@@ -10,9 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import jp.hyperequalizer.app.HyperEqApp
 import jp.hyperequalizer.app.R
@@ -23,8 +21,8 @@ import jp.hyperequalizer.app.data.PlaylistRepository
 import jp.hyperequalizer.app.databinding.FragmentMediaListBinding
 import jp.hyperequalizer.app.library.MediaFile
 import jp.hyperequalizer.app.library.MediaLibraryScanner
-import jp.hyperequalizer.app.playback.NowPlayingState
 import jp.hyperequalizer.app.ui.common.AudioExtractDialogHelper
+import jp.hyperequalizer.app.ui.common.DragSelectTouchListener
 import jp.hyperequalizer.app.ui.common.MediaFileAdapter
 import jp.hyperequalizer.app.ui.common.MediaFolderAdapter
 import jp.hyperequalizer.app.ui.common.PlaylistPickerDialog
@@ -58,6 +56,7 @@ class MediaListFragment : Fragment() {
     private lateinit var hiddenFolderRepo: HiddenFolderRepository
     private lateinit var adapter: MediaFileAdapter
     private lateinit var folderAdapter: MediaFolderAdapter
+    private var dragSelectListener: DragSelectTouchListener? = null
 
     private var viewMode = ViewMode.LIST
     private var allFiles: List<MediaFile> = emptyList()
@@ -89,13 +88,20 @@ class MediaListFragment : Fragment() {
             scope = viewLifecycleOwner.lifecycleScope,
             onClick = { openPlayer(it) },
             onMenu = { anchor, item -> showMenu(anchor, item) },
-            onSelectionChanged = { count -> updateSelectionBar(count) }
+            onSelectionChanged = { count -> updateSelectionBar(count) },
+            onDragSelectStart = { position ->
+                adapter.beginDragSelectSession()
+                dragSelectListener?.start(position)
+            }
         )
         folderAdapter = MediaFolderAdapter(
             onClick = { openFolder(it) },
             onMenu = { anchor, folder -> showFolderMenu(anchor, folder) }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        val dragListener = DragSelectTouchListener(binding.recyclerView, adapter)
+        dragSelectListener = dragListener
+        binding.recyclerView.addOnItemTouchListener(dragListener)
         binding.emptyText.text = getString(if (mediaType == MediaType.VIDEO) R.string.empty_videos else R.string.empty_music)
         binding.swipeRefresh.setOnRefreshListener { reload() }
 
@@ -104,26 +110,17 @@ class MediaListFragment : Fragment() {
         binding.btnViewFolder.setOnClickListener { setViewMode(ViewMode.FOLDER) }
         setViewMode(ViewMode.LIST)
         setupSelectionBar()
-        observeNowPlaying()
 
         reload()
-    }
-
-    /** 再生中のコンテンツが変わるたびに一覧内の該当アイテムをハイライトする */
-    private fun observeNowPlaying() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                NowPlayingState.current.collect { info ->
-                    adapter.setCurrentPlayingUri(info?.uri)
-                }
-            }
-        }
     }
 
     /** まとめて選択した項目に対する一括操作(お気に入り/プレイリスト追加/非表示/削除)のバーを設定する */
     private fun setupSelectionBar() {
         binding.selectionBar.btnSelectionClose.setOnClickListener {
             adapter.exitSelectionMode()
+        }
+        binding.selectionBar.btnSelSelectAll.setOnClickListener {
+            if (adapter.isAllSelected()) adapter.deselectAll() else adapter.selectAll()
         }
         binding.selectionBar.btnSelFavorite.setOnClickListener {
             val items = adapter.selectedItems()
@@ -179,6 +176,9 @@ class MediaListFragment : Fragment() {
         }
         binding.selectionBar.root.visibility = View.VISIBLE
         binding.selectionBar.selectionCountText.text = getString(R.string.selection_count_format, count)
+        binding.selectionBar.btnSelSelectAll.setText(
+            if (adapter.isAllSelected()) R.string.action_deselect_all else R.string.action_select_all
+        )
     }
 
     override fun onResume() {
