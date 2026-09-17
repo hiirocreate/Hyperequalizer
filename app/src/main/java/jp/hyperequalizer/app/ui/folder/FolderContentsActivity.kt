@@ -7,9 +7,7 @@ import android.view.View
 import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import jp.hyperequalizer.app.HyperEqApp
@@ -19,10 +17,10 @@ import jp.hyperequalizer.app.data.MediaType
 import jp.hyperequalizer.app.data.PlaylistRepository
 import jp.hyperequalizer.app.databinding.ActivityFolderContentsBinding
 import jp.hyperequalizer.app.library.MediaLibraryScanner
-import jp.hyperequalizer.app.playback.NowPlayingState
 import jp.hyperequalizer.app.ui.common.AudioExtractDialogHelper
-import jp.hyperequalizer.app.ui.common.NowPlayingBarController
+import jp.hyperequalizer.app.ui.common.DragSelectTouchListener
 import jp.hyperequalizer.app.ui.common.MediaFileAdapter
+import jp.hyperequalizer.app.ui.common.NowPlayingBarController
 import jp.hyperequalizer.app.ui.common.PlaylistPickerDialog
 import jp.hyperequalizer.app.ui.common.UiMediaItem
 import jp.hyperequalizer.app.ui.editor.EditorActivity
@@ -45,8 +43,9 @@ class FolderContentsActivity : AppCompatActivity() {
     private lateinit var adapter: MediaFileAdapter
     private lateinit var mediaType: MediaType
     private lateinit var folderPath: String
+    private lateinit var nowPlayingBarController: NowPlayingBarController
     private var currentItems: List<UiMediaItem> = emptyList()
-    private var nowPlayingBar: NowPlayingBarController? = null
+    private var dragSelectListener: DragSelectTouchListener? = null
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -79,39 +78,42 @@ class FolderContentsActivity : AppCompatActivity() {
                 startActivity(PlayerActivity.newIntentForQueue(this, uris, types, startIndex, shuffle = false))
             },
             onMenu = { anchor, item -> showMenu(anchor, item) },
-            onSelectionChanged = { count -> updateSelectionBar(count) }
+            onSelectionChanged = { count -> updateSelectionBar(count) },
+            onDragSelectStart = { position ->
+                adapter.beginDragSelectSession()
+                dragSelectListener?.start(position)
+            }
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
+        val dragListener = DragSelectTouchListener(binding.recyclerView, adapter)
+        dragSelectListener = dragListener
+        binding.recyclerView.addOnItemTouchListener(dragListener)
         binding.emptyText.text = getString(if (mediaType == MediaType.VIDEO) R.string.empty_videos else R.string.empty_music)
         setupSelectionBar()
-        observeNowPlaying()
-        nowPlayingBar = NowPlayingBarController(
-            activity = this,
-            barRoot = binding.nowPlayingBar.root,
-            icon = binding.nowPlayingBar.nowPlayingIcon,
-            title = binding.nowPlayingBar.nowPlayingTitle,
-            playPauseButton = binding.nowPlayingBar.nowPlayingPlayPause
-        ).also { it.start() }
+
+        nowPlayingBarController = NowPlayingBarController(this, binding.nowPlayingBar)
 
         reload()
     }
 
-    /** 再生中のコンテンツが変わるたびに一覧内の該当アイテムをハイライトする */
-    private fun observeNowPlaying() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                NowPlayingState.current.collect { info ->
-                    adapter.setCurrentPlayingUri(info?.uri)
-                }
-            }
-        }
+    override fun onStart() {
+        super.onStart()
+        nowPlayingBarController.start()
+    }
+
+    override fun onStop() {
+        nowPlayingBarController.stop()
+        super.onStop()
     }
 
     /** まとめて選択した項目に対する一括操作(お気に入り/プレイリスト追加/非表示/削除)のバーを設定する */
     private fun setupSelectionBar() {
         binding.selectionBar.btnSelectionClose.setOnClickListener {
             adapter.exitSelectionMode()
+        }
+        binding.selectionBar.btnSelSelectAll.setOnClickListener {
+            if (adapter.isAllSelected()) adapter.deselectAll() else adapter.selectAll()
         }
         binding.selectionBar.btnSelFavorite.setOnClickListener {
             val items = adapter.selectedItems()
@@ -167,16 +169,14 @@ class FolderContentsActivity : AppCompatActivity() {
         }
         binding.selectionBar.root.visibility = View.VISIBLE
         binding.selectionBar.selectionCountText.text = getString(R.string.selection_count_format, count)
+        binding.selectionBar.btnSelSelectAll.setText(
+            if (adapter.isAllSelected()) R.string.action_deselect_all else R.string.action_select_all
+        )
     }
 
     override fun onResume() {
         super.onResume()
         reload()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        nowPlayingBar?.stop()
     }
 
     private fun reload() {
