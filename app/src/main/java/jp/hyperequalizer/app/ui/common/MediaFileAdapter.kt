@@ -21,6 +21,9 @@ import kotlinx.coroutines.launch
 /**
  * ファイル一覧用アダプター。
  * 長押しで「まとめて選択」モードに入り、タップでチェックのON/OFFを切り替えられる。
+ * 長押ししたまま指を離さずドラッグすると、なぞった範囲をまとめて選択できる
+ * (実際のドラッグ追跡・自動スクロールは[DragSelectTouchListener]が担当し、
+ * このアダプターは選択範囲の計算のみを行う)。
  * 選択状態が変わるたびに [onSelectionChanged] へ現在の選択件数を通知する
  * (呼び出し側はこれを使って選択操作バーの表示/非表示や件数表示を更新する)。
  */
@@ -28,38 +31,28 @@ class MediaFileAdapter(
     private val scope: CoroutineScope,
     private val onClick: (UiMediaItem) -> Unit,
     private val onMenu: (View, UiMediaItem) -> Unit,
-    private val onSelectionChanged: (Int) -> Unit = {}
+    private val onSelectionChanged: (Int) -> Unit = {},
+    /** 長押しでドラッグ範囲選択を開始したい位置を呼び出し元([DragSelectTouchListener]の保持者)へ知らせる */
+    private val onDragSelectStart: (Int) -> Unit = {}
 ) : ListAdapter<UiMediaItem, MediaFileAdapter.VH>(DIFF) {
 
     private var selectionMode = false
     private val selectedKeys = mutableSetOf<String>()
 
-    /** 現在再生中のアイテムのURI(未再生ならnull)。一覧内のハイライト表示に使う。 */
-    private var currentPlayingUri: String? = null
+    // ドラッグ操作の「今回のセッション中」に新たに選択したキーだけを別途覚えておく。
+    // ドラッグで範囲外に戻った際、これに含まれるものだけ選択解除することで、
+    // ドラッグ開始前から(タップ操作で)選択されていた項目には触れないようにする。
+    private val dragSessionKeys = mutableSetOf<String>()
 
     private fun keyOf(item: UiMediaItem): String = "${item.uri}|${item.playlistItemId}"
-
-    /**
-     * 再生中のURIをセットし、一覧内のハイライト表示を更新する。
-     * 旧・新の再生中アイテムだけを再描画すればよいため、リスト全体の再スキャンは不要。
-     */
-    fun setCurrentPlayingUri(uri: String?) {
-        if (uri == currentPlayingUri) return
-        val previousUri = currentPlayingUri
-        currentPlayingUri = uri
-        currentList.forEachIndexed { index, item ->
-            val itemUri = item.uri.toString()
-            if (itemUri == previousUri || itemUri == uri) {
-                notifyItemChanged(index)
-            }
-        }
-    }
 
     fun isSelectionMode(): Boolean = selectionMode
 
     fun selectedCount(): Int = selectedKeys.size
 
     fun selectedItems(): List<UiMediaItem> = currentList.filter { selectedKeys.contains(keyOf(it)) }
+
+    fun isAllSelected(): Boolean = currentList.isNotEmpty() && selectedKeys.size >= currentList.size
 
     fun enterSelectionMode(initialItem: UiMediaItem) {
         selectionMode = true
@@ -73,6 +66,27 @@ class MediaFileAdapter(
         if (!selectionMode) return
         selectionMode = false
         selectedKeys.clear()
+        dragSessionKeys.clear()
+        notifyDataSetChanged()
+        onSelectionChanged(0)
+    }
+
+    /** 表示中の全件を選択する(既に全件選択済みの場合は呼び出し元が[deselectAll]を使う想定) */
+    fun selectAll() {
+        if (currentList.isEmpty()) return
+        selectionMode = true
+        selectedKeys.clear()
+        selectedKeys.addAll(currentList.map { keyOf(it) })
+        dragSessionKeys.clear()
+        notifyDataSetChanged()
+        onSelectionChanged(selectedKeys.size)
+    }
+
+    /** 選択中の全件を解除する(選択モード自体は維持し、0件選択の状態にする) */
+    fun deselectAll() {
+        if (selectedKeys.isEmpty()) return
+        selectedKeys.clear()
+        dragSessionKeys.clear()
         notifyDataSetChanged()
         onSelectionChanged(0)
     }
@@ -87,6 +101,50 @@ class MediaFileAdapter(
         val index = currentList.indexOfFirst { keyOf(it) == key }
         if (index >= 0) notifyItemChanged(index)
         onSelectionChanged(selectedKeys.size)
+    }
+
+    /** 長押しでドラッグ範囲選択が始まったことを記録する([DragSelectTouchListener]から呼ばれる想定) */
+    fun beginDragSelectSession() {
+        dragSessionKeys.clear()
+    }
+
+    fun endDragSelectSession() {
+        dragSessionKeys.clear()
+    }
+
+    /**
+     * anchor(長押しを始めた位置)から to(現在指がある位置)までの範囲を選択状態にする。
+     * ドラッグで一度範囲に入って選択されたが、その後範囲外に戻ったものは選択を解除する
+     * (ただし今回のドラッグセッションで追加したものに限る。詳細は[dragSessionKeys]参照)。
+     */
+    fun selectRange(anchor: Int, to: Int) {
+        if (currentList.isEmpty()) return
+        val a = anchor.coerceIn(0, currentList.size - 1)
+        val b = to.coerceIn(0, currentList.size - 1)
+        val lo = minOf(a, b)
+        val hi = maxOf(a, b)
+        val newRangeKeys = (lo..hi).map { keyOf(currentList[it]) }.toSet()
+
+        var changed = false
+        val toRemove = dragSessionKeys - newRangeKeys
+        if (toRemove.isNotEmpty()) {
+            selectedKeys.removeAll(toRemove)
+            dragSessionKeys.removeAll(toRemove)
+            changed = true
+        }
+        for (key in newRangeKeys) {
+            if (selectedKeys.add(key)) {
+                dragSessionKeys.add(key)
+                changed = true
+            }
+        }
+        if (!selectionMode && selectedKeys.isNotEmpty()) {
+            selectionMode = true
+        }
+        if (changed) {
+            notifyDataSetChanged()
+            onSelectionChanged(selectedKeys.size)
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -119,21 +177,19 @@ class MediaFileAdapter(
             binding.selectionCheckbox.isChecked = selected
             binding.menuButton.visibility = if (selectionMode) View.GONE else View.VISIBLE
 
-            val isPlaying = item.uri.toString() == currentPlayingUri
-            binding.nowPlayingIndicator.visibility = if (isPlaying) View.VISIBLE else View.GONE
-            binding.title.setTextColor(
-                ContextCompat.getColor(
-                    binding.root.context,
-                    if (isPlaying) R.color.hyper_accent else R.color.hyper_on_surface
-                )
-            )
-
             binding.root.setOnClickListener {
                 if (selectionMode) toggleSelection(item) else onClick(item)
             }
             binding.root.setOnLongClickListener {
                 if (!selectionMode) {
                     enterSelectionMode(item)
+                }
+                // 長押しした位置を起点に、指を離さず動かせばそのままドラッグ範囲選択に
+                // つながるよう、呼び出し元([DragSelectTouchListener]保持者)へ通知する。
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) {
+                    selectRange(pos, pos)
+                    onDragSelectStart(pos)
                 }
                 true
             }
