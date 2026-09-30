@@ -260,15 +260,27 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
     }
 
     /**
-     * @param resumeSavedPosition 通常はtrue(前回の再生位置から再開する「常時メモリ機能」)。
-     * 同一アイテムのリピート再生([onMediaItemTransition]の reason が
-     * MEDIA_ITEM_TRANSITION_REASON_REPEAT の場合)ではfalseを渡す。
-     * ExoPlayerは1ループ(REPEAT_MODE_ONE)で末尾まで再生すると自動的に先頭(0)へ
-     * 戻ってから遷移イベントを発火するが、そのタイミングでここが常に「保存された
-     * 最終再生位置」へシークし直すと、直前(末尾到達時点)に保存された位置=曲の
-     * ほぼ終端に逆戻りしてしまい、「最後の一瞬(例: 4:30)を繰り返す」ように見える
-     * 不具合になっていた。同一アイテムのリピートでは位置復元自体が不要
-     * (0から再生を続けるのが正しい)なため、その場合はスキップする。
+     * @param resumeSavedPosition trueなのは、この画面が新しく開かれて最初のアイテムを
+     * 表示する瞬間([buildMediaQueueAndPrepare]からの呼び出し)だけ。それ以外
+     * ([onMediaItemTransition]からの呼び出し、つまり1ループ・リストループ・
+     * シャッフル・自動で次へ・手動での前へ/次へなど、この画面を開いたまま
+     * 連続再生している最中に発生する遷移全般)では常にfalseを渡す。
+     *
+     * 以前は同一アイテムのリピート再生(reasonがMEDIA_ITEM_TRANSITION_REASON_REPEAT)
+     * の場合だけこれをfalseにしていたが、それ以外の遷移でも全く同じ理由で
+     * スキップが必要なことが分かった: キュー内の別のファイルが過去に最後まで
+     * 再生済みで、DBの「前回の再生位置」がその動画のほぼ終端付近のまま
+     * 保存されていた場合、ループ/シャッフル/自動で次へ、といった遷移で
+     * そのファイルへ到達するたびに、ExoPlayerは既に正しく位置0から再生を
+     * 始めているにも関わらず、この直後にDBの古い(ほぼ終端の)位置へ
+     * シークし直してしまっていた。すると、そのファイルは実質1秒未満しか
+     * 再生されずにまた次のアイテムへ遷移する…という連鎖がキュー全体に
+     * 波及し、「ループ・シャッフル・次の動画へほとんど進まないまま
+     * 再生が止まっているように見える」不具合につながっていた。
+     * 「前回の再生位置から再開する」機能は、この画面を新しく開いた直後の
+     * 最初の1件にのみ意味があり、同じ再生セッション中にExoPlayerが自動的に
+     * 進めていく遷移では常にスキップしてよい(ExoPlayerが既に正しい位置に
+     * しているため)。
      */
     private fun applyForIndex(index: Int, resumeSavedPosition: Boolean = true) {
         if (index !in queueUris.indices) return
@@ -376,8 +388,15 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
      * 状態復元は通常通り行う)。詳細は[applyForIndex]のコメント参照。
      */
     private fun restoreStateForCurrent(resumeSavedPosition: Boolean = true) {
+        val uriAtLaunch = currentUri
         lifecycleScope.launch {
-            val state = repo.getState(currentUri)
+            val state = repo.getState(uriAtLaunch)
+            // DBからの読み込み(suspend)を待っている間に、さらに別のアイテムへ
+            // 遷移していた場合、ここで得た結果は既に古い。それを今のプレイヤーへ
+            // 適用してしまうと、現在再生中の全く別のアイテムに対して誤った
+            // ループ設定・アスペクト比・速度・位置を適用してしまうことになるため、
+            // まだ同じアイテムを表示中であることを確認してから適用する。
+            if (uriAtLaunch != currentUri) return@launch
             loopStartMs = state.loopStartMs
             loopEndMs = state.loopEndMs
             loopEnabled = state.loopEnabled
@@ -412,8 +431,15 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             binding.videoLayout.setVideoSize(videoSize.width, videoSize.height)
         }
 
+        /**
+         * 直前のアイテムの「最後に再生していた位置」の保存は、ここではなく
+         * [onPositionDiscontinuity] で行う。この時点(onMediaItemTransition)では
+         * ExoPlayer内部の状態は既に新しいアイテムへ切り替わっており、
+         * player.currentPosition は新アイテムの位置(通常0)を指してしまっているため、
+         * ここで旧アイテムのURIに対して保存すると、常に位置0で上書きしてしまい
+         * 「常時メモリ機能」が正しく働かなくなる不具合になっていた。
+         */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            saveCurrentStateNow()
             deactivateSeparatedPlayback() // 曲/動画が切り替わったら分離再生は一旦解除する
             // イコライザー画面(EqualizerSheet)は開いた時点のアイテムのURI/audioSessionId・
             // 分離結果を保持したまま動作しているため、ループ/次へなどで裏側の再生対象が
@@ -428,13 +454,31 @@ class PlayerActivity : AppCompatActivity(), GestureOverlayView.Listener {
             // onVideoSizeChangedが呼ばれるまでの間はvideoWidth/Height<=0となり、
             // ResizableVideoLayout側の描画変形処理は早期リターンして何もしない状態になる。
             binding.videoLayout.setVideoSize(0, 0)
-            // 1ループ(REPEAT_MODE_ONE)で同一アイテムが末尾から先頭へ戻った場合は
-            // reason が MEDIA_ITEM_TRANSITION_REASON_REPEAT になる。この場合、
-            // ExoPlayerは既に位置0から再生を再開しているため、保存された「前回の
-            // 再生位置」(末尾到達直前の値=ほぼ終端)へ戻すシークは行わない
-            // (詳細は[applyForIndex]のコメント参照。行うと最後の一瞬を繰り返すバグになる)。
-            val resumeSavedPosition = reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
-            applyForIndex(player.currentMediaItemIndex, resumeSavedPosition)
+            // reasonによらず、常に保存位置への復元をスキップする(詳細は
+            // [applyForIndex]のresumeSavedPositionのコメント参照)。
+            applyForIndex(player.currentMediaItemIndex, resumeSavedPosition = false)
+        }
+
+        /**
+         * アイテムが切り替わる直前の「最後の再生位置」を正しく保存する。
+         * [oldPosition] にはこのコールバック自体が渡す、切り替わる直前の
+         * (まだ上書きされていない)位置情報が入っているため、[onMediaItemTransition]
+         * とは異なり player の現在状態を読みに行く必要がなく、常に正しい値が取れる。
+         * durationMsは意図的に更新しない(ここではoldPosition側アイテムの
+         * 正しいdurationが取得できないため。durationは再生中ずっとprogressRunnable
+         * が更新し続けているので、既にDBに正しい値が入っている)。
+         */
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            if (oldPosition.mediaItemIndex == newPosition.mediaItemIndex) return
+            val oldUri = oldPosition.mediaItem?.localConfiguration?.uri?.toString() ?: return
+            lifecycleScope.launch {
+                val state = repo.getState(oldUri)
+                repo.save(state.copy(lastPositionMs = oldPosition.positionMs))
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
